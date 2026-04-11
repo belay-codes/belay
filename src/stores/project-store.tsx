@@ -361,16 +361,28 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     return session.id;
   }, []);
 
-  const removeSession = useCallback((projectId: string, sessionId: string) => {
-    dispatch({ type: "REMOVE_SESSION", projectId, sessionId });
-    // Side effect: delete the persisted message file for this session
-    window.electronAPI?.sessionDeleteMessages(sessionId).catch((err) => {
-      console.error(
-        `[ProjectStore] Failed to delete session messages for ${sessionId}:`,
-        err,
-      );
-    });
-  }, []);
+  const removeSession = useCallback(
+    (projectId: string, sessionId: string) => {
+      // Check if this is the last session — if so, auto-create a new one
+      const project = state.openProjects.find((p) => p.id === projectId);
+      const isLast = project && project.sessions.length <= 1;
+
+      dispatch({ type: "REMOVE_SESSION", projectId, sessionId });
+      // Side effect: delete the persisted message file for this session
+      window.electronAPI?.sessionDeleteMessages(sessionId).catch((err) => {
+        console.error(
+          `[ProjectStore] Failed to delete session messages for ${sessionId}:`,
+          err,
+        );
+      });
+
+      // Auto-create a fresh session so the project is never empty
+      if (isLast) {
+        addSession(projectId);
+      }
+    },
+    [state.openProjects, addSession],
+  );
 
   const setActiveSession = useCallback(
     (projectId: string, sessionId: string) => {

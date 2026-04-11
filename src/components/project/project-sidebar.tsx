@@ -227,23 +227,21 @@ export function ProjectSidebar() {
                               {session.title}
                             </span>
 
-                            {project.sessions.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={(e) =>
-                                  handleCloseSession(e, project.id, session.id)
-                                }
-                                className={[
-                                  "flex size-4 shrink-0 items-center justify-center rounded transition-colors",
-                                  isSessionActive
-                                    ? "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
-                                    : "text-transparent group-hover/session:text-muted-foreground hover:!bg-muted-foreground/10 hover:!text-foreground",
-                                ].join(" ")}
-                                aria-label={`Close ${session.title}`}
-                              >
-                                <X className="size-2.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={(e) =>
+                                handleCloseSession(e, project.id, session.id)
+                              }
+                              className={[
+                                "flex size-4 shrink-0 items-center justify-center rounded transition-colors",
+                                isSessionActive
+                                  ? "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                                  : "text-transparent group-hover/session:text-muted-foreground hover:!bg-muted-foreground/10 hover:!text-foreground",
+                              ].join(" ")}
+                              aria-label={`Close ${session.title}`}
+                            >
+                              <X className="size-2.5" />
+                            </button>
                           </button>
                         );
                       })}
