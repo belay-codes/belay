@@ -6,7 +6,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import type { Project } from "@/types/project";
+import type { Project, ChatSession } from "@/types/project";
 
 // ── State shape ────────────────────────────────────────────────────────
 
@@ -20,38 +20,76 @@ interface ProjectState {
 type ProjectAction =
   | { type: "OPEN_PROJECT"; project: Project }
   | { type: "CLOSE_PROJECT"; projectId: string }
-  | { type: "SET_ACTIVE_PROJECT"; projectId: string };
+  | { type: "SET_ACTIVE_PROJECT"; projectId: string }
+  | { type: "ADD_SESSION"; projectId: string; session: ChatSession }
+  | { type: "REMOVE_SESSION"; projectId: string; sessionId: string }
+  | { type: "SET_ACTIVE_SESSION"; projectId: string; sessionId: string }
+  | {
+      type: "RENAME_SESSION";
+      projectId: string;
+      sessionId: string;
+      title: string;
+    };
 
 // ── Context value ──────────────────────────────────────────────────────
 
 interface ProjectStoreContextValue extends ProjectState {
-  /** Open (or activate) a project given its directory path. */
   openProject: (path: string) => void;
-  /** Close a project by id. If it was active, the next most-recent project becomes active. */
   closeProject: (projectId: string) => void;
-  /** Switch the active project. */
   setActiveProject: (projectId: string) => void;
-  /** Derive a stable id from a file-system path. */
   pathToId: (path: string) => string;
+  addSession: (projectId: string) => string;
+  removeSession: (projectId: string, sessionId: string) => void;
+  setActiveSession: (projectId: string, sessionId: string) => void;
+  renameSession: (projectId: string, sessionId: string, title: string) => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = "belay-project-state";
 
-/** Normalise a path into a stable, unique id. */
 function pathToId(rawPath: string): string {
   return rawPath.replace(/\\/g, "/").replace(/\/$/, "");
 }
 
-/** Extract the folder name from a full path. */
 function pathToName(rawPath: string): string {
   const normalised = rawPath.replace(/\\/g, "/").replace(/\/$/, "");
   const idx = normalised.lastIndexOf("/");
   return idx >= 0 ? normalised.slice(idx + 1) : normalised;
 }
 
+function makeDefaultSession(): ChatSession {
+  return {
+    id: crypto.randomUUID(),
+    title: "New Chat",
+    createdAt: new Date(),
+  };
+}
+
 // ── Persistence ────────────────────────────────────────────────────────
+
+interface SerializedProject extends Omit<Project, "lastOpened" | "sessions"> {
+  lastOpened: string;
+  sessions: Array<Omit<ChatSession, "createdAt"> & { createdAt: string }>;
+}
+
+function ensureSessions(project: SerializedProject): Project {
+  const sessions = (project.sessions ?? []).map((s) => ({
+    ...s,
+    createdAt: new Date(s.createdAt),
+  }));
+  // Backward compat: projects loaded from storage before sessions existed
+  if (sessions.length === 0) {
+    const defaultSession = makeDefaultSession();
+    sessions.push(defaultSession);
+  }
+  return {
+    ...project,
+    lastOpened: new Date(project.lastOpened),
+    sessions,
+    activeSessionId: project.activeSessionId ?? sessions[0].id ?? null,
+  };
+}
 
 function loadState(): ProjectState {
   try {
@@ -59,12 +97,7 @@ function loadState(): ProjectState {
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        openProjects: (parsed.openProjects ?? []).map(
-          (p: Project & { lastOpened: string }) => ({
-            ...p,
-            lastOpened: new Date(p.lastOpened),
-          }),
-        ),
+        openProjects: (parsed.openProjects ?? []).map(ensureSessions),
         activeProjectId: parsed.activeProjectId ?? null,
       };
     }
@@ -78,8 +111,18 @@ function saveState(state: ProjectState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
-    // Ignore quota errors etc.
+    // Ignore quota errors
   }
+}
+
+// ── Reducer helpers ────────────────────────────────────────────────────
+
+function updateProject(
+  projects: Project[],
+  projectId: string,
+  updater: (project: Project) => Project,
+): Project[] {
+  return projects.map((p) => (p.id === projectId ? updater(p) : p));
 }
 
 // ── Reducer ────────────────────────────────────────────────────────────
@@ -95,7 +138,6 @@ function projectReducer(
       );
 
       if (existing) {
-        // Already open — just bring it to front & activate.
         const reordered = [
           ...state.openProjects.filter((p) => p.id !== existing.id),
           { ...existing, lastOpened: new Date() },
@@ -106,13 +148,17 @@ function projectReducer(
         };
       }
 
-      // New project
+      const defaultSession = makeDefaultSession();
+      const newProject: Project = {
+        ...action.project,
+        lastOpened: new Date(),
+        sessions: [defaultSession],
+        activeSessionId: defaultSession.id,
+      };
+
       return {
-        openProjects: [
-          ...state.openProjects,
-          { ...action.project, lastOpened: new Date() },
-        ],
-        activeProjectId: action.project.id,
+        openProjects: [...state.openProjects, newProject],
+        activeProjectId: newProject.id,
       };
     }
 
@@ -120,8 +166,6 @@ function projectReducer(
       const remaining = state.openProjects.filter(
         (p) => p.id !== action.projectId,
       );
-
-      // If we closed the active project, activate the last one remaining
       const newActiveId =
         state.activeProjectId === action.projectId
           ? remaining.length > 0
@@ -137,14 +181,88 @@ function projectReducer(
 
     case "SET_ACTIVE_PROJECT": {
       if (state.activeProjectId === action.projectId) return state;
-
       return {
         ...state,
         activeProjectId: action.projectId,
-        openProjects: state.openProjects.map((p) =>
-          p.id === action.projectId
-            ? { ...p, lastOpened: new Date() }
-            : p,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            lastOpened: new Date(),
+          }),
+        ),
+      };
+    }
+
+    case "ADD_SESSION": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            sessions: [...p.sessions, action.session],
+            activeSessionId: action.session.id,
+          }),
+        ),
+      };
+    }
+
+    case "REMOVE_SESSION": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => {
+            const remaining = p.sessions.filter(
+              (s) => s.id !== action.sessionId,
+            );
+            // If the removed session was active, activate the last remaining
+            const newActiveSessionId =
+              p.activeSessionId === action.sessionId
+                ? remaining.length > 0
+                  ? remaining[remaining.length - 1].id
+                  : null
+                : p.activeSessionId;
+            return {
+              ...p,
+              sessions: remaining,
+              activeSessionId: newActiveSessionId,
+            };
+          },
+        ),
+      };
+    }
+
+    case "SET_ACTIVE_SESSION": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) =>
+            p.activeSessionId === action.sessionId
+              ? p
+              : { ...p, activeSessionId: action.sessionId },
+        ),
+      };
+    }
+
+    case "RENAME_SESSION": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            sessions: p.sessions.map((s) =>
+              s.id === action.sessionId ? { ...s, title: action.title } : s,
+            ),
+          }),
         ),
       };
     }
@@ -165,7 +283,6 @@ const ProjectStoreContext = createContext<ProjectStoreContextValue | null>(
 export function ProjectStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(projectReducer, null, loadState);
 
-  // Persist on every change
   useEffect(() => {
     saveState(state);
   }, [state]);
@@ -175,7 +292,14 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     const name = pathToName(rawPath);
     dispatch({
       type: "OPEN_PROJECT",
-      project: { id, name, path: rawPath, lastOpened: new Date() },
+      project: {
+        id,
+        name,
+        path: rawPath,
+        lastOpened: new Date(),
+        sessions: [],
+        activeSessionId: null,
+      },
     });
   }, []);
 
@@ -187,6 +311,30 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "SET_ACTIVE_PROJECT", projectId });
   }, []);
 
+  const addSession = useCallback((projectId: string): string => {
+    const session = makeDefaultSession();
+    dispatch({ type: "ADD_SESSION", projectId, session });
+    return session.id;
+  }, []);
+
+  const removeSession = useCallback((projectId: string, sessionId: string) => {
+    dispatch({ type: "REMOVE_SESSION", projectId, sessionId });
+  }, []);
+
+  const setActiveSession = useCallback(
+    (projectId: string, sessionId: string) => {
+      dispatch({ type: "SET_ACTIVE_SESSION", projectId, sessionId });
+    },
+    [],
+  );
+
+  const renameSession = useCallback(
+    (projectId: string, sessionId: string, title: string) => {
+      dispatch({ type: "RENAME_SESSION", projectId, sessionId, title });
+    },
+    [],
+  );
+
   return (
     <ProjectStoreContext.Provider
       value={{
@@ -195,6 +343,10 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         closeProject,
         setActiveProject,
         pathToId,
+        addSession,
+        removeSession,
+        setActiveSession,
+        renameSession,
       }}
     >
       {children}

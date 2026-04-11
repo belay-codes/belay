@@ -22,7 +22,10 @@ function AppLayout() {
     );
   }
 
-  // ── Main layout (sidebar + per-project chat) ───────────────────────
+  // ── Main layout ────────────────────────────────────────────────────
+  const activeProject = openProjects.find((p) => p.id === activeProjectId);
+  const activeSessionId = activeProject?.activeSessionId ?? null;
+
   return (
     <div
       id="app-container"
@@ -31,21 +34,23 @@ function AppLayout() {
       <TitleBar />
       <div className="flex min-h-0 flex-1">
         <ProjectSidebar />
-
-        {/* Chat area — render all open chats but only show the active one */}
+        {/* Chat area — render every session's chat; only the active one is visible */}
         <div className="relative min-w-0 flex-1">
-          {openProjects.map((project) => (
-            <div
-              key={project.id}
-              className={
-                project.id === activeProjectId
-                  ? "absolute inset-0 flex flex-col"
-                  : "hidden"
-              }
-            >
-              <Chat projectPath={project.path} />
-            </div>
-          ))}
+          {openProjects.map((project) =>
+            project.sessions.map((session) => (
+              <div
+                key={session.id}
+                className={
+                  session.id === activeSessionId &&
+                  project.id === activeProjectId
+                    ? "absolute inset-0 flex flex-col"
+                    : "hidden"
+                }
+              >
+                <Chat projectPath={project.path} />
+              </div>
+            )),
+          )}
         </div>
       </div>
     </div>

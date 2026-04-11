@@ -5,14 +5,28 @@ import {
   Plus,
   MessageSquare,
   Clock,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
 
 export function ProjectSidebar() {
   const [isOpening, setIsOpening] = useState(false);
-  const { openProjects, activeProjectId, setActiveProject, closeProject, openProject } =
-    useProjectStore();
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const {
+    openProjects,
+    activeProjectId,
+    setActiveProject,
+    closeProject,
+    openProject,
+    addSession,
+    removeSession,
+    setActiveSession,
+  } = useProjectStore();
 
   const handleOpenDirectory = useCallback(async () => {
     setIsOpening(true);
@@ -30,14 +44,56 @@ export function ProjectSidebar() {
 
   const handleCloseProject = useCallback(
     (e: React.MouseEvent, projectId: string) => {
-      e.stopPropagation(); // Prevent selecting the project when clicking close
+      e.stopPropagation();
       closeProject(projectId);
     },
     [closeProject],
   );
 
+  const handleCloseSession = useCallback(
+    (e: React.MouseEvent, projectId: string, sessionId: string) => {
+      e.stopPropagation();
+      removeSession(projectId, sessionId);
+    },
+    [removeSession],
+  );
+
+  const toggleExpanded = useCallback((projectId: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleProjectClick = useCallback(
+    (projectId: string) => {
+      setActiveProject(projectId);
+      // Auto-expand when selecting a project
+      setExpandedProjects((prev) => {
+        if (prev.has(projectId)) return prev;
+        const next = new Set(prev);
+        next.add(projectId);
+        return next;
+      });
+    },
+    [setActiveProject],
+  );
+
+  const handleNewSession = useCallback(
+    (e: React.MouseEvent, projectId: string) => {
+      e.stopPropagation();
+      addSession(projectId);
+    },
+    [addSession],
+  );
+
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-background/50">
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-background/50">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <MessageSquare className="size-3.5 text-muted-foreground" />
@@ -62,52 +118,148 @@ export function ProjectSidebar() {
           <div className="flex flex-col gap-0.5 px-1.5">
             {openProjects.map((project) => {
               const isActive = project.id === activeProjectId;
+              const isExpanded = expandedProjects.has(project.id);
 
               return (
-                <button
-                  key={project.id}
-                  type="button"
-                  onClick={() => setActiveProject(project.id)}
-                  className={[
-                    "group flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-                    isActive
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                  ].join(" ")}
-                >
-                  {/* Folder icon */}
-                  <FolderOpen
-                    className={[
-                      "size-3.5 shrink-0",
-                      isActive ? "text-primary" : "text-muted-foreground/60",
-                    ].join(" ")}
-                  />
-
-                  {/* Project name & path */}
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium leading-tight">
-                      {project.name}
-                    </div>
-                    <div className="truncate text-[10px] text-muted-foreground/60 leading-tight">
-                      {project.path}
-                    </div>
-                  </div>
-
-                  {/* Close button */}
+                <div key={project.id}>
+                  {/* Project row */}
                   <button
                     type="button"
-                    onClick={(e) => handleCloseProject(e, project.id)}
+                    onClick={() => handleProjectClick(project.id)}
                     className={[
-                      "flex size-5 shrink-0 items-center justify-center rounded transition-colors",
+                      "group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left transition-colors",
                       isActive
-                        ? "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
-                        : "text-transparent group-hover:text-muted-foreground hover:!bg-muted-foreground/10 hover:!text-foreground",
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                     ].join(" ")}
-                    aria-label={`Close ${project.name}`}
                   >
-                    <X className="size-3" />
+                    {/* Expand chevron */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpanded(project.id);
+                      }}
+                      className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground transition-colors"
+                      aria-label={isExpanded ? "Collapse" : "Expand"}
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="size-3" />
+                      ) : (
+                        <ChevronRight className="size-3" />
+                      )}
+                    </button>
+
+                    {/* Folder icon */}
+                    <FolderOpen
+                      className={[
+                        "size-3.5 shrink-0",
+                        isActive ? "text-primary" : "text-muted-foreground/60",
+                      ].join(" ")}
+                    />
+
+                    {/* Project name */}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-medium leading-tight">
+                        {project.name}
+                      </div>
+                    </div>
+
+                    {/* New chat button (visible on hover when active) */}
+                    {isActive && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleNewSession(e, project.id)}
+                        className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted-foreground/10 hover:text-foreground"
+                        aria-label="New chat"
+                      >
+                        <Plus className="size-3" />
+                      </button>
+                    )}
+
+                    {/* Close project button */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleCloseProject(e, project.id)}
+                      className={[
+                        "flex size-5 shrink-0 items-center justify-center rounded transition-colors",
+                        isActive
+                          ? "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                          : "text-transparent group-hover:text-muted-foreground hover:!bg-muted-foreground/10 hover:!text-foreground",
+                      ].join(" ")}
+                      aria-label={`Close ${project.name}`}
+                    >
+                      <X className="size-3" />
+                    </button>
                   </button>
-                </button>
+
+                  {/* Session sub-items */}
+                  {isExpanded && (
+                    <div className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2">
+                      {project.sessions.map((session) => {
+                        const isSessionActive =
+                          isActive && session.id === project.activeSessionId;
+
+                        return (
+                          <button
+                            key={session.id}
+                            type="button"
+                            onClick={() =>
+                              setActiveSession(project.id, session.id)
+                            }
+                            className={[
+                              "group/session flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors",
+                              isSessionActive
+                                ? "bg-muted/70 text-foreground"
+                                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+                            ].join(" ")}
+                          >
+                            <MessageSquare
+                              className={[
+                                "size-3 shrink-0",
+                                isSessionActive
+                                  ? "text-primary"
+                                  : "text-muted-foreground/50",
+                              ].join(" ")}
+                            />
+
+                            <span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
+                              {session.title}
+                            </span>
+
+                            {project.sessions.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={(e) =>
+                                  handleCloseSession(e, project.id, session.id)
+                                }
+                                className={[
+                                  "flex size-4 shrink-0 items-center justify-center rounded transition-colors",
+                                  isSessionActive
+                                    ? "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                                    : "text-transparent group-hover/session:text-muted-foreground hover:!bg-muted-foreground/10 hover:!text-foreground",
+                                ].join(" ")}
+                                aria-label={`Close ${session.title}`}
+                              >
+                                <X className="size-2.5" />
+                              </button>
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      {/* Add chat button inside expanded section */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleNewSession(e, project.id)}
+                        className="flex items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] text-muted-foreground/50 transition-colors hover:bg-muted/30 hover:text-muted-foreground"
+                      >
+                        <Plus className="size-3 shrink-0" />
+                        <span className="leading-tight">New Chat</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
