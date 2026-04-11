@@ -20,6 +20,7 @@ interface ManagedClient {
 /** Manages multiple simultaneous ACP agent connections, keyed by agentId */
 class ConnectionManager {
   private clients = new Map<string, ManagedClient>();
+  private pendingConnects = new Map<string, Promise<void>>();
   private permissionIndex = new Map<string, string>(); // requestId → agentId
   private mainWindow: BrowserWindow | null = null;
 
@@ -32,14 +33,33 @@ class ConnectionManager {
   }
 
   async connect(agentId: string): Promise<void> {
-    const existing = this.clients.get(agentId);
-
     // If already connected and ready, no-op
+    const existing = this.clients.get(agentId);
     if (existing && existing.client.state === "ready") {
       return;
     }
 
+    // If a connect is already in flight for this agent, piggyback on it
+    const pending = this.pendingConnects.get(agentId);
+    if (pending) {
+      return pending;
+    }
+
+    // Start a new connection and record the promise so concurrent callers
+    // can await the same in-flight operation instead of spawning a second
+    // process (which would tear down the first).
+    const connectPromise = this._doConnect(agentId).finally(() => {
+      this.pendingConnects.delete(agentId);
+    });
+
+    this.pendingConnects.set(agentId, connectPromise);
+    return connectPromise;
+  }
+
+  /** Internal — called once per in-flight connect for a given agentId. */
+  private async _doConnect(agentId: string): Promise<void> {
     // If exists in a bad state, teardown and reconnect
+    const existing = this.clients.get(agentId);
     if (existing) {
       await this.teardownClient(agentId);
     }
@@ -200,6 +220,16 @@ class ConnectionManager {
       this.permissionIndex.delete(requestId);
     }
     managed.pendingPermissions.clear();
+
+    // Clear callbacks before disconnecting to prevent stale notifications
+    // from reaching the renderer.  Without this, a concurrent connect()
+    // can create a new client that sends "ready", only for the old client's
+    // disconnect() to subsequently fire "disconnected" — causing the
+    // renderer to reset all session state.
+    managed.client.onStateChange = null;
+    managed.client.onUpdate = null;
+    managed.client.onError = null;
+    managed.client.onPermissionRequest = null;
 
     await managed.client.disconnect();
     this.clients.delete(agentId);

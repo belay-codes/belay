@@ -4,12 +4,11 @@ import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
 import { PermissionDialog } from "./permission-dialog";
 import type { Message, MessageBlock, ToolCallInfo } from "./types";
-import type { AcpSessionMode } from "@/types/acp";
+import type { AcpAvailableCommand, AcpSessionMode } from "@/types/acp";
 
 import {
   useConnectionState,
   useAcpActions,
-  useSlashCommands,
   useInstalledHarnesses,
 } from "@/hooks/use-acp";
 import { useSessionMessages } from "@/stores/message-store";
@@ -126,8 +125,8 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // without waiting for React to re-render and re-register the effect.
   const acpSessionIdRef = useRef<string | null>(null);
 
-  // Slash commands are per-session (filtered by acpSessionId)
-  const slashCommands = useSlashCommands(acpSessionId);
+  // Slash commands populated from the main streaming listener
+  const [slashCommands, setSlashCommands] = useState<AcpAvailableCommand[]>([]);
 
   // ── Session modes ──────────────────────────────────────────────────
   const [availableModes, setAvailableModes] = useState<AcpSessionMode[]>([]);
@@ -150,7 +149,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       console.error("[Chat] Auto-connect failed:", err),
     );
     refreshHarnesses();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- mount only
+  }, [agentId, connect]);
 
   // ── Close agent selector on outside click ────────────────────────
   useEffect(() => {
@@ -240,6 +239,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       acpSessionIdRef.current = null;
       setAvailableModes([]);
       setCurrentModeId(null);
+      setSlashCommands([]);
     }
   }, [connectionState]);
 
@@ -273,24 +273,49 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     return api.acpOnUpdate((raw: unknown) => {
       const notification = raw as Record<string, unknown>;
 
-      // ── Filter: only process updates for our ACP session ───────
-      // Use the REF so we always read the latest value, even when
-      // handleSend sets acpSessionId and calls sendPrompt before
-      // React has re-rendered and re-registered this listener.
-      const currentAcpSessionId = acpSessionIdRef.current;
-      const notifSessionId = notification.sessionId as string | undefined;
-      if (!currentAcpSessionId || notifSessionId !== currentAcpSessionId)
-        return;
-
       const inner = notification.update as Record<string, unknown> | undefined;
       if (!inner) return;
 
       const sessionUpdate = inner.sessionUpdate as string | undefined;
 
+      // ── Session ID filter ────────────────────────────────────────
+      // Use the REF so we always read the latest value, even when
+      // handleSend sets acpSessionId and calls sendPrompt before
+      // React has re-rendered and re-registered this listener.
+      const currentAcpSessionId = acpSessionIdRef.current;
+      const notifSessionId = notification.sessionId as string | undefined;
+
+      // Mode/command updates can arrive before acpSessionIdRef is set
+      // (race: createSession IPC resolves AFTER the agent has already
+      // sent notifications).  Accept them when we have no session yet;
+      // once we do, filter normally.
+      const isEarlyUpdate =
+        sessionUpdate === "current_mode_update" ||
+        sessionUpdate === "available_commands_update";
+
+      if (isEarlyUpdate) {
+        // If we already have a session, only accept matching notifications
+        if (currentAcpSessionId && notifSessionId !== currentAcpSessionId)
+          return;
+      } else {
+        // All other (streaming) updates require an active session match
+        if (!currentAcpSessionId || notifSessionId !== currentAcpSessionId)
+          return;
+      }
+
       // ── Mode update (no streaming message needed) ───────────────
       if (sessionUpdate === "current_mode_update") {
         const modeId = inner.currentModeId as string | undefined;
         if (modeId) setCurrentModeId(modeId);
+        return;
+      }
+
+      // ── Slash commands update ──────────────────────────────────
+      if (sessionUpdate === "available_commands_update") {
+        const cmds = inner.availableCommands as
+          | AcpAvailableCommand[]
+          | undefined;
+        if (cmds) setSlashCommands(cmds);
         return;
       }
 
