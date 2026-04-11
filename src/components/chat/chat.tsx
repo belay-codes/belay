@@ -86,49 +86,6 @@ function upsertToolCallBlock(
   ];
 }
 
-// ── Mock AI response (fallback when no agent connected) ────────────
-
-async function getAIResponse(userMessage: string): Promise<string> {
-  // Simulate network latency
-  await new Promise((r) => setTimeout(r, 800 + Math.random() * 1200));
-
-  const lower = userMessage.toLowerCase();
-
-  if (
-    lower.includes("hello") ||
-    lower.includes("hi") ||
-    lower.includes("hey")
-  ) {
-    return "Hey there! 👋 How can I help you today?";
-  }
-
-  if (lower.includes("help")) {
-    return "I'm here to assist you! You can ask me questions about programming, brainstorm ideas, draft text, analyze data, or just have a conversation. What would you like to do?";
-  }
-
-  if (lower.includes("thank")) {
-    return "You're welcome! Let me know if there's anything else I can help with.";
-  }
-
-  const responses = [
-    "That's a great question. Let me think about that...\n\nBased on what you've described, I'd suggest breaking the problem down into smaller steps. Start with the core requirement and iterate from there.",
-    "I'd be happy to help with that! Here's my take:\n\nThe key thing to consider is the overall architecture. Once you have a solid foundation, the details tend to fall into place more naturally.",
-    "Interesting point! There are a few ways to approach this:\n\n1. **The straightforward approach** — just get it working first\n2. **The elegant approach** — design for extensibility\n3. **The pragmatic approach** — a bit of both\n\nI'd usually recommend option 3 for most cases.",
-    "Let me work through that with you.\n\nThe main thing to keep in mind is that simplicity wins. Don't over-engineer early on — you can always refine later once you understand the problem space better.",
-  ];
-
-  return responses[Math.floor(Math.random() * responses.length)];
-}
-
-// ── Suggested prompts for empty state ──────────────────────────────
-
-const suggestions = [
-  "Explain how closures work in JavaScript",
-  "Help me design a REST API",
-  "Write a function that validates emails",
-  "What are the best practices for React state management?",
-];
-
 // ── Chat Component ─────────────────────────────────────────────────
 
 interface ChatProps {
@@ -455,16 +412,60 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     [],
   );
 
+  // ── Handle mode selection from @ autocomplete ───────────────────
+  const handleModeSelect = useCallback(
+    async (modeId: string) => {
+      if (!agentId || !acpSessionId || modeId === currentModeId) return;
+      setCurrentModeId(modeId);
+      try {
+        await setSessionMode(agentId, acpSessionId, modeId);
+      } catch (err) {
+        console.error("[Chat] Failed to set mode from @ mention:", err);
+      }
+    },
+    [agentId, acpSessionId, currentModeId, setSessionMode],
+  );
+
   // ── Send a message ───────────────────────────────────────────────
   const handleSend = useCallback(
     async (content: string) => {
-      const trimmed = content.trim();
+      let trimmed = content.trim();
       if (!trimmed || isThinking) return;
+
+      // ── Parse @mode mentions from the start of the message ──────
+      // Pattern: @ModeName (rest of message). The mode name must match
+      // one of the available modes (case-insensitive on the name or id).
+      let modeSwitched = false;
+      const atMatch = trimmed.match(/^@(\S+)\s*/);
+      if (atMatch && availableModes.length > 0) {
+        const mention = atMatch[1].toLowerCase();
+        const matched = availableModes.find(
+          (m) =>
+            m.name.toLowerCase() === mention || m.id.toLowerCase() === mention,
+        );
+        if (matched) {
+          // Switch mode
+          if (agentId && acpSessionId && matched.id !== currentModeId) {
+            setCurrentModeId(matched.id);
+            setSessionMode(agentId, acpSessionId, matched.id).catch((err) =>
+              console.error("[Chat] Failed to set mode from @ mention:", err),
+            );
+          }
+          modeSwitched = true;
+          // Strip the @mention and its trailing whitespace
+          trimmed = trimmed.slice(atMatch[0].length).trim();
+          if (!trimmed) return; // was only a mode mention, nothing to send
+        }
+      }
+
+      const displayContent = modeSwitched ? content.trim() : trimmed;
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: "user",
-        blocks: [{ id: crypto.randomUUID(), type: "text", content: trimmed }],
+        blocks: [
+          { id: crypto.randomUUID(), type: "text", content: displayContent },
+        ],
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, userMessage]);
@@ -472,7 +473,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       // Auto-title session from first user message
       if (messages.length === 0) {
         const title =
-          trimmed.length > 80 ? trimmed.slice(0, 77) + "..." : trimmed;
+          displayContent.length > 80
+            ? displayContent.slice(0, 77) + "..."
+            : displayContent;
         renameSession(projectId, sessionId, title);
       }
 
@@ -577,38 +580,22 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           streamingMessageId.current = null;
         }
       } else {
-        // ── Fallback path: mock AI response ────────────────────────
-        setIsThinking(true);
-        try {
-          const response = await getAIResponse(trimmed);
-          const assistantMessage: Message = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            blocks: [
-              { id: crypto.randomUUID(), type: "text", content: response },
-            ],
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, assistantMessage]);
-        } catch {
-          const errorMessage: Message = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            blocks: [
-              {
-                id: crypto.randomUUID(),
-                type: "text",
-                content: "Sorry, something went wrong. Please try again.",
-              },
-            ],
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, errorMessage]);
-        } finally {
-          setIsThinking(false);
-          // Persist after mock response
-          saveMessages();
-        }
+        // ── No agent selected ─────────────────────────────────────
+        const errorMessage: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          blocks: [
+            {
+              id: crypto.randomUUID(),
+              type: "text",
+              content:
+                "⚠️ **Please select a Harness** before sending a message.",
+            },
+          ],
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        saveMessages();
       }
     },
     [
@@ -834,19 +821,6 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
                   : "Select an agent below, or just start typing."}
             </p>
           </div>
-
-          <div className="grid w-full max-w-lg grid-cols-1 gap-2 sm:grid-cols-2">
-            {suggestions.map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                onClick={() => handleSend(suggestion)}
-                className="rounded-lg border border-border/60 bg-card px-3 py-2.5 text-left text-[13px] leading-snug text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground"
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Agent selector + input pinned to bottom */}
@@ -858,8 +832,13 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
             </div>
             <ChatInput
               onSend={handleSend}
-              disabled={isThinking}
+              disabled={!agentId || isThinking}
+              placeholder={
+                agentId ? undefined : "Select an agent to get started…"
+              }
               slashCommands={slashCommands}
+              modes={availableModes}
+              onModeSelect={handleModeSelect}
             />
           </div>
         </div>
@@ -928,8 +907,13 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           </div>
           <ChatInput
             onSend={handleSend}
-            disabled={isThinking}
+            disabled={!agentId || isThinking}
+            placeholder={
+              agentId ? undefined : "Select an agent to get started…"
+            }
             slashCommands={slashCommands}
+            modes={availableModes}
+            onModeSelect={handleModeSelect}
           />
         </div>
       </div>
