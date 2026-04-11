@@ -1,6 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import * as path from "node:path";
 import { connectionManager } from "./acp/connection-manager.js";
+import {
+  loadSessionMessages,
+  saveSessionMessages,
+  deleteSessionMessages,
+} from "./persistence.js";
 import { fetchRegistry } from "./acp/registry.js";
 import type { RegistryAgent } from "./acp/registry.js";
 import {
@@ -97,6 +102,23 @@ ipcMain.handle("project:openDirectory", async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0];
+});
+
+// ── IPC handlers for session persistence ──────────────────────────────
+
+ipcMain.handle("session:loadMessages", async (_event, sessionId: string) => {
+  return loadSessionMessages(sessionId);
+});
+
+ipcMain.handle(
+  "session:saveMessages",
+  async (_event, sessionId: string, messages: Record<string, unknown>[]) => {
+    await saveSessionMessages(sessionId, messages);
+  },
+);
+
+ipcMain.handle("session:deleteMessages", async (_event, sessionId: string) => {
+  await deleteSessionMessages(sessionId);
 });
 
 // ── IPC handlers for ACP operations ──────────────────────────────────

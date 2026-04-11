@@ -10,6 +10,8 @@ import {
   useAcpActions,
   useSlashCommands,
 } from "@/hooks/use-acp";
+import { useSessionMessages } from "@/stores/message-store";
+import { useProjectStore } from "@/stores/project-store";
 
 // ── Block helpers ────────────────────────────────────────────────────
 
@@ -128,11 +130,15 @@ const suggestions = [
 // ── Chat Component ─────────────────────────────────────────────────
 
 interface ChatProps {
+  sessionId: string;
+  projectId: string;
   projectPath?: string;
 }
 
-export function Chat({ projectPath }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
+  // ── Persisted message state ──────────────────────────────────────
+  const { messages, setMessages, saveMessages } = useSessionMessages(sessionId);
+
   const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -140,7 +146,8 @@ export function Chat({ projectPath }: ChatProps) {
   const connectionState = useConnectionState();
   const { sendPrompt, cancelPrompt, createSession } = useAcpActions();
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // The ACP session ID (separate from the UI sessionId used for persistence)
+  const [acpSessionId, setAcpSessionId] = useState<string | null>(null);
   const slashCommands = useSlashCommands();
   const [permissionRequest, setPermissionRequest] = useState<{
     requestId: string;
@@ -152,11 +159,14 @@ export function Chat({ projectPath }: ChatProps) {
   // The ID of the assistant message currently being streamed into
   const streamingMessageId = useRef<string | null>(null);
 
-  // ── Eagerly create session when agent connects ───────────────────
+  // Project store for auto-titling sessions
+  const { renameSession } = useProjectStore();
+
+  // ── Eagerly create ACP session when agent connects ───────────────
   // This triggers the agent to send available_commands_update so slash
   // commands appear before the user sends their first message.
   useEffect(() => {
-    if (connectionState !== "ready" || sessionId) return;
+    if (connectionState !== "ready" || acpSessionId) return;
     let cancelled = false;
     createSession(projectPath).then((result) => {
       if (cancelled) return;
@@ -164,17 +174,17 @@ export function Chat({ projectPath }: ChatProps) {
         typeof result === "string"
           ? result
           : ((result as { sessionId?: string } | undefined)?.sessionId ?? null);
-      if (sid) setSessionId(sid);
+      if (sid) setAcpSessionId(sid);
     });
     return () => {
       cancelled = true;
     };
-  }, [connectionState, sessionId, createSession, projectPath]);
+  }, [connectionState, acpSessionId, createSession, projectPath]);
 
-  // ── Reset session when connection drops ──────────────────────────
+  // ── Reset ACP session when connection drops ──────────────────────
   useEffect(() => {
     if (connectionState === "disconnected") {
-      setSessionId(null);
+      setAcpSessionId(null);
     }
   }, [connectionState]);
 
@@ -337,6 +347,13 @@ export function Chat({ projectPath }: ChatProps) {
       };
       setMessages((prev) => [...prev, userMessage]);
 
+      // Auto-title session from first user message
+      if (messages.length === 0) {
+        const title =
+          trimmed.length > 80 ? trimmed.slice(0, 77) + "..." : trimmed;
+        renameSession(projectId, sessionId, title);
+      }
+
       const isConnected = connectionState === "ready";
 
       if (isConnected) {
@@ -344,8 +361,8 @@ export function Chat({ projectPath }: ChatProps) {
         setIsThinking(true);
 
         try {
-          // Reuse existing session or create one if needed
-          let sid = sessionId;
+          // Reuse existing ACP session or create one if needed
+          let sid = acpSessionId;
           if (!sid) {
             const result = await createSession(projectPath);
             sid =
@@ -353,7 +370,7 @@ export function Chat({ projectPath }: ChatProps) {
                 ? result
                 : ((result as { sessionId?: string } | undefined)?.sessionId ??
                   null);
-            if (sid) setSessionId(sid);
+            if (sid) setAcpSessionId(sid);
           }
 
           if (!sid) throw new Error("Failed to create session");
@@ -380,6 +397,9 @@ export function Chat({ projectPath }: ChatProps) {
               msg.id === assistantId ? { ...msg, isStreaming: false } : msg,
             ),
           );
+
+          // Persist completed exchange to disk
+          saveMessages();
         } catch {
           // On error, finalize the streaming message with an error note
           if (streamingMessageId.current) {
@@ -407,6 +427,8 @@ export function Chat({ projectPath }: ChatProps) {
               }),
             );
           }
+          // Persist even on error so the user's message isn't lost
+          saveMessages();
         } finally {
           setIsThinking(false);
           streamingMessageId.current = null;
@@ -441,24 +463,32 @@ export function Chat({ projectPath }: ChatProps) {
           setMessages((prev) => [...prev, errorMessage]);
         } finally {
           setIsThinking(false);
+          // Persist after mock response
+          saveMessages();
         }
       }
     },
     [
       isThinking,
       connectionState,
-      sessionId,
+      acpSessionId,
       createSession,
       sendPrompt,
       projectPath,
+      projectId,
+      sessionId,
+      messages.length,
+      renameSession,
+      setMessages,
+      saveMessages,
     ],
   );
 
   // ── Cancel an in-progress prompt ─────────────────────────────────
   const handleCancel = useCallback(async () => {
-    if (sessionId) {
+    if (acpSessionId) {
       try {
-        await cancelPrompt(sessionId);
+        await cancelPrompt(acpSessionId);
       } catch {
         // Ignore cancel errors
       }
@@ -474,7 +504,9 @@ export function Chat({ projectPath }: ChatProps) {
     }
     setIsThinking(false);
     streamingMessageId.current = null;
-  }, [sessionId, cancelPrompt]);
+    // Persist the cancelled state
+    saveMessages();
+  }, [acpSessionId, cancelPrompt, setMessages, saveMessages]);
 
   // ── Empty state ──────────────────────────────────────────────────
   if (messages.length === 0 && !isThinking) {

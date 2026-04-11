@@ -303,9 +303,24 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const closeProject = useCallback((projectId: string) => {
-    dispatch({ type: "CLOSE_PROJECT", projectId });
-  }, []);
+  const closeProject = useCallback(
+    (projectId: string) => {
+      // Side effect: delete message files for all sessions in the project
+      const project = state.openProjects.find((p) => p.id === projectId);
+      if (project) {
+        for (const session of project.sessions) {
+          window.electronAPI?.sessionDeleteMessages(session.id).catch((err) => {
+            console.error(
+              `[ProjectStore] Failed to delete session messages for ${session.id}:`,
+              err,
+            );
+          });
+        }
+      }
+      dispatch({ type: "CLOSE_PROJECT", projectId });
+    },
+    [state.openProjects],
+  );
 
   const setActiveProject = useCallback((projectId: string) => {
     dispatch({ type: "SET_ACTIVE_PROJECT", projectId });
@@ -319,6 +334,13 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
 
   const removeSession = useCallback((projectId: string, sessionId: string) => {
     dispatch({ type: "REMOVE_SESSION", projectId, sessionId });
+    // Side effect: delete the persisted message file for this session
+    window.electronAPI?.sessionDeleteMessages(sessionId).catch((err) => {
+      console.error(
+        `[ProjectStore] Failed to delete session messages for ${sessionId}:`,
+        err,
+      );
+    });
   }, []);
 
   const setActiveSession = useCallback(

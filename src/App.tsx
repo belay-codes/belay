@@ -3,6 +3,7 @@ import { Chat } from "@/components/chat/chat";
 import { ProjectWelcome } from "@/components/project/project-welcome";
 import { ProjectSidebar } from "@/components/project/project-sidebar";
 import { ProjectStoreProvider, useProjectStore } from "@/stores/project-store";
+import { MessageStoreProvider } from "@/stores/message-store";
 
 function AppLayout() {
   const { openProjects, activeProjectId } = useProjectStore();
@@ -47,7 +48,11 @@ function AppLayout() {
                     : "hidden"
                 }
               >
-                <Chat projectPath={project.path} />
+                <Chat
+                  sessionId={session.id}
+                  projectId={project.id}
+                  projectPath={project.path}
+                />
               </div>
             )),
           )}
@@ -60,7 +65,9 @@ function AppLayout() {
 function App() {
   return (
     <ProjectStoreProvider>
-      <AppLayout />
+      <MessageStoreProvider>
+        <AppLayout />
+      </MessageStoreProvider>
     </ProjectStoreProvider>
   );
 }

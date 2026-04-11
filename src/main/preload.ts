@@ -4,6 +4,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Project
   projectOpenDirectory: () => ipcRenderer.invoke("project:openDirectory"),
 
+  // Session persistence
+  sessionLoadMessages: (sessionId: string) =>
+    ipcRenderer.invoke("session:loadMessages", sessionId),
+  sessionSaveMessages: (sessionId: string, messages: unknown[]) =>
+    ipcRenderer.invoke("session:saveMessages", sessionId, messages),
+  sessionDeleteMessages: (sessionId: string) =>
+    ipcRenderer.invoke("session:deleteMessages", sessionId),
+
   // Window controls
   minimize: () => ipcRenderer.send("window:minimize"),
   maximize: () => ipcRenderer.send("window:maximize"),

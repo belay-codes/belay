@@ -13,6 +13,16 @@ export interface ElectronAPI {
   // Project
   projectOpenDirectory: () => Promise<string | null>;
 
+  // Session persistence
+  sessionLoadMessages: (
+    sessionId: string,
+  ) => Promise<Record<string, unknown>[]>;
+  sessionSaveMessages: (
+    sessionId: string,
+    messages: unknown[],
+  ) => Promise<void>;
+  sessionDeleteMessages: (sessionId: string) => Promise<void>;
+
   // Window controls
   minimize: () => void;
   maximize: () => void;
