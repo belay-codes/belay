@@ -2,17 +2,30 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Bot, Sparkles } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
+import { ToolCallDisplay } from "./tool-call-display";
+import type { ToolCallInfo } from "./tool-call-display";
+import { PermissionDialog } from "./permission-dialog";
+
+import {
+  useConnectionState,
+  useAcpActions,
+  useAcpUpdates,
+} from "@/hooks/use-acp";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
-export interface Message {
+interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  /** For assistant messages, tracks whether this is still streaming */
+  isStreaming?: boolean;
+  /** Tool calls associated with this message */
+  toolCalls?: ToolCallInfo[];
 }
 
-// ── Mock AI response (replace with real API call) ──────────────────────
+// ── Mock AI response (fallback when no agent connected) ────────────────
 
 async function getAIResponse(userMessage: string): Promise<string> {
   // Simulate network latency
@@ -62,6 +75,102 @@ export function Chat() {
   const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // ACP state
+  const connectionState = useConnectionState();
+  const { sendPrompt, cancelPrompt, createSession } = useAcpActions();
+  const { updates, clearUpdates } = useAcpUpdates();
+
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [permissionRequest, setPermissionRequest] = useState<{
+    requestId: string;
+    sessionId: string;
+    description: string;
+    options: Array<{ id: string; label: string; kind: string }>;
+  } | null>(null);
+
+  // Track which updates have been processed for streaming
+  const processedUpdateIndex = useRef(0);
+  // The ID of the assistant message currently being streamed into
+  const streamingMessageId = useRef<string | null>(null);
+
+  // ── Reset session when connection drops ────────────────────────────
+  useEffect(() => {
+    if (connectionState === "disconnected") {
+      setSessionId(null);
+    }
+  }, [connectionState]);
+
+  // ── Listen for permission requests ─────────────────────────────────
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    // The listener is already registered in useAcpUpdates, but permission
+    // requests come on a separate channel so we subscribe here.
+    const unsubscribe = api.acpOnPermissionRequest?.((request: unknown) => {
+      setPermissionRequest(request as typeof permissionRequest);
+    });
+    return () => {
+      // acpOnPermissionRequest uses ipcRenderer.on which doesn't return an unsubscribe fn
+      // Cleanup is handled by the preload's listener model
+      void unsubscribe;
+    };
+  }, []);
+
+  // ── Process streaming updates ──────────────────────────────────────
+  useEffect(() => {
+    const newUpdates = updates.slice(processedUpdateIndex.current);
+    processedUpdateIndex.current = updates.length;
+
+    if (newUpdates.length === 0) return;
+
+    for (const raw of newUpdates) {
+      const update = raw as Record<string, unknown>;
+
+      // ── Message chunk (text streaming) ──────────────────────────
+      if (
+        typeof update.type === "string" &&
+        (update.type === "agent_message_chunk" ||
+          update.type === "thought_chunk")
+      ) {
+        const content = update.content as string | undefined;
+        if (content && streamingMessageId.current) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === streamingMessageId.current
+                ? { ...msg, content: msg.content + content }
+                : msg,
+            ),
+          );
+        }
+      }
+
+      // ── Tool call update ────────────────────────────────────────
+      if (typeof update.toolCallId === "string") {
+        const toolCall: ToolCallInfo = {
+          id: update.toolCallId as string,
+          name: (update.toolName as string) ?? "unknown",
+          status: (update.status as ToolCallInfo["status"]) ?? "pending",
+          arguments: update.arguments as string | undefined,
+          output: update.content as string | undefined,
+        };
+
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== streamingMessageId.current) return msg;
+            const existing = msg.toolCalls ?? [];
+            const idx = existing.findIndex((tc) => tc.id === update.toolCallId);
+            if (idx >= 0) {
+              const updated = [...existing];
+              updated[idx] = { ...updated[idx], ...toolCall };
+              return { ...msg, toolCalls: updated };
+            }
+            return { ...msg, toolCalls: [...existing, toolCall] };
+          }),
+        );
+      }
+    }
+  }, [updates]);
+
   // ── Auto-scroll to bottom on new messages ──────────────────────────
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -72,6 +181,15 @@ export function Chat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isThinking, scrollToBottom]);
+
+  // ── Permission response handler ────────────────────────────────────
+  const handlePermissionRespond = useCallback(
+    (requestId: string, optionId: string) => {
+      window.electronAPI?.acpRespondPermission(requestId, optionId);
+      setPermissionRequest(null);
+    },
+    [],
+  );
 
   // ── Send a message ─────────────────────────────────────────────────
   const handleSend = useCallback(
@@ -87,34 +205,133 @@ export function Chat() {
       };
 
       setMessages((prev) => [...prev, userMessage]);
-      setIsThinking(true);
 
-      try {
-        const response = await getAIResponse(trimmed);
+      const isConnected = connectionState === "ready";
 
-        const assistantMessage: Message = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: response,
-          timestamp: new Date(),
-        };
+      if (isConnected) {
+        // ── ACP path: use real agent ───────────────────────────────
+        setIsThinking(true);
+        clearUpdates();
+        processedUpdateIndex.current = 0;
 
-        setMessages((prev) => [...prev, assistantMessage]);
-      } catch {
-        const errorMessage: Message = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "Sorry, something went wrong. Please try again.",
-          timestamp: new Date(),
-        };
+        try {
+          // Create session if we don't have one
+          let sid = sessionId;
+          if (!sid) {
+            const result = await createSession();
+            // Handle both string return and { sessionId } return
+            sid =
+              typeof result === "string"
+                ? result
+                : ((result as { sessionId?: string } | undefined)?.sessionId ??
+                  null);
+            setSessionId(sid);
+          }
 
-        setMessages((prev) => [...prev, errorMessage]);
-      } finally {
-        setIsThinking(false);
+          if (!sid) throw new Error("Failed to create session");
+
+          // Create an empty streaming assistant message
+          const assistantId = crypto.randomUUID();
+          streamingMessageId.current = assistantId;
+          const assistantMessage: Message = {
+            id: assistantId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date(),
+            isStreaming: true,
+            toolCalls: [],
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+
+          // Send prompt (resolves when agent finishes)
+          await sendPrompt(sid, trimmed);
+
+          // Mark the message as no longer streaming
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId ? { ...msg, isStreaming: false } : msg,
+            ),
+          );
+        } catch {
+          // On error, finalize the streaming message with an error note
+          if (streamingMessageId.current) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === streamingMessageId.current
+                  ? {
+                      ...msg,
+                      isStreaming: false,
+                      content:
+                        msg.content ||
+                        "Sorry, something went wrong while communicating with the agent.",
+                    }
+                  : msg,
+              ),
+            );
+          }
+        } finally {
+          setIsThinking(false);
+          streamingMessageId.current = null;
+        }
+      } else {
+        // ── Fallback path: mock AI response ────────────────────────
+        setIsThinking(true);
+        try {
+          const response = await getAIResponse(trimmed);
+
+          const assistantMessage: Message = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: response,
+            timestamp: new Date(),
+          };
+
+          setMessages((prev) => [...prev, assistantMessage]);
+        } catch {
+          const errorMessage: Message = {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "Sorry, something went wrong. Please try again.",
+            timestamp: new Date(),
+          };
+
+          setMessages((prev) => [...prev, errorMessage]);
+        } finally {
+          setIsThinking(false);
+        }
       }
     },
-    [isThinking],
+    [
+      isThinking,
+      connectionState,
+      sessionId,
+      createSession,
+      sendPrompt,
+      clearUpdates,
+    ],
   );
+
+  // ── Cancel an in-progress prompt ───────────────────────────────────
+  const handleCancel = useCallback(async () => {
+    if (sessionId) {
+      try {
+        await cancelPrompt(sessionId);
+      } catch {
+        // Ignore cancel errors
+      }
+    }
+    if (streamingMessageId.current) {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === streamingMessageId.current
+            ? { ...msg, isStreaming: false }
+            : msg,
+        ),
+      );
+    }
+    setIsThinking(false);
+    streamingMessageId.current = null;
+  }, [sessionId, cancelPrompt]);
 
   // ── Empty state ────────────────────────────────────────────────────
   if (messages.length === 0 && !isThinking) {
@@ -130,7 +347,9 @@ export function Chat() {
               How can I help you?
             </h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Ask me anything — code, ideas, writing, analysis, and more.
+              {connectionState === "ready"
+                ? "Connected to an agent. Ask me anything!"
+                : "Ask me anything — code, ideas, writing, analysis, and more."}
             </p>
           </div>
 
@@ -149,11 +368,19 @@ export function Chat() {
         </div>
 
         <ChatInput onSend={handleSend} disabled={isThinking} />
+
+        {/* Dialogs */}
+        <PermissionDialog
+          request={permissionRequest}
+          onRespond={handlePermissionRespond}
+        />
       </div>
     );
   }
 
   // ── Conversation view ──────────────────────────────────────────────
+  const isStreaming = messages.some((m) => m.isStreaming);
+
   return (
     <div className="flex h-full flex-col">
       {/* Message list */}
@@ -161,11 +388,36 @@ export function Chat() {
         <div className="mx-auto max-w-3xl px-4 py-6">
           <div className="space-y-5">
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <div key={message.id} className="space-y-2">
+                <MessageBubble message={message} />
+
+                {/* Tool calls for assistant messages */}
+                {!message.isStreaming &&
+                  message.role === "assistant" &&
+                  message.toolCalls &&
+                  message.toolCalls.length > 0 && (
+                    <div className="ml-11 space-y-2">
+                      {message.toolCalls.map((tc) => (
+                        <ToolCallDisplay key={tc.id} toolCall={tc} />
+                      ))}
+                    </div>
+                  )}
+
+                {/* Active tool calls during streaming */}
+                {message.isStreaming &&
+                  message.toolCalls &&
+                  message.toolCalls.length > 0 && (
+                    <div className="ml-11 space-y-2">
+                      {message.toolCalls.map((tc) => (
+                        <ToolCallDisplay key={tc.id} toolCall={tc} />
+                      ))}
+                    </div>
+                  )}
+              </div>
             ))}
 
-            {/* Typing indicator */}
-            {isThinking && (
+            {/* Typing indicator (only when not streaming via ACP) */}
+            {isThinking && !isStreaming && (
               <div className="flex items-start gap-3">
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
                   <Bot className="size-4 text-primary" />
@@ -179,12 +431,31 @@ export function Chat() {
                 </div>
               </div>
             )}
+
+            {/* Cancel button during ACP streaming */}
+            {isThinking && isStreaming && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Input pinned to bottom */}
       <ChatInput onSend={handleSend} disabled={isThinking} />
+
+      {/* Dialogs */}
+      <PermissionDialog
+        request={permissionRequest}
+        onRespond={handlePermissionRespond}
+      />
     </div>
   );
 }

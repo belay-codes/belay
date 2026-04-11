@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { Minus, Square, X } from "lucide-react";
+import { Minus, Square, X, Globe } from "lucide-react";
+import { HarnessSelector } from "@/components/harness/harness-selector";
+import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
 
 /** The standard Windows "restore" icon — two overlapping offset rectangles. */
 function RestoreIcon({ className }: { className?: string }) {
@@ -22,6 +24,7 @@ function RestoreIcon({ className }: { className?: string }) {
 
 export function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
+  const [showRegistry, setShowRegistry] = useState(false);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -57,6 +60,23 @@ export function TitleBar() {
         <span className="text-[13px] font-medium tracking-tight text-foreground">
           Belay
         </span>
+      </div>
+
+      {/* ACP agent selector & registry */}
+      <div
+        className="flex items-center gap-1"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        <HarnessSelector />
+        <button
+          type="button"
+          onClick={() => setShowRegistry(true)}
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Browse agent registry"
+          title="Browse agent registry"
+        >
+          <Globe className="size-3.5" />
+        </button>
       </div>
 
       {/* Spacer to push controls right */}
@@ -98,6 +118,12 @@ export function TitleBar() {
           <X className="size-[15px]" strokeWidth={1.8} />
         </button>
       </div>
+
+      {/* Registry dialog */}
+      <HarnessRegistryDialog
+        open={showRegistry}
+        onClose={() => setShowRegistry(false)}
+      />
     </header>
   );
 }

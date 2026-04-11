@@ -26,8 +26,9 @@ function App() {
   return (
     <div className={`h-screen w-screen ${isMaximized ? "" : "p-1.5"}`}>
       <div
+        id="app-container"
         className={[
-          "flex h-full flex-col overflow-hidden bg-background",
+          "relative flex h-full flex-col overflow-hidden bg-background",
           isMaximized
             ? ""
             : "rounded-xl border border-border/50 shadow-lg shadow-black/10",
