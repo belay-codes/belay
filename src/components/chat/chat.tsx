@@ -5,7 +5,11 @@ import { ChatInput } from "./chat-input";
 import { PermissionDialog } from "./permission-dialog";
 import type { Message, MessageBlock, ToolCallInfo } from "./types";
 
-import { useConnectionState, useAcpActions } from "@/hooks/use-acp";
+import {
+  useConnectionState,
+  useAcpActions,
+  useSlashCommands,
+} from "@/hooks/use-acp";
 
 // ── Block helpers ────────────────────────────────────────────────────
 
@@ -137,6 +141,7 @@ export function Chat({ projectPath }: ChatProps) {
   const { sendPrompt, cancelPrompt, createSession } = useAcpActions();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const slashCommands = useSlashCommands();
   const [permissionRequest, setPermissionRequest] = useState<{
     requestId: string;
     sessionId: string;
@@ -146,6 +151,25 @@ export function Chat({ projectPath }: ChatProps) {
 
   // The ID of the assistant message currently being streamed into
   const streamingMessageId = useRef<string | null>(null);
+
+  // ── Eagerly create session when agent connects ───────────────────
+  // This triggers the agent to send available_commands_update so slash
+  // commands appear before the user sends their first message.
+  useEffect(() => {
+    if (connectionState !== "ready" || sessionId) return;
+    let cancelled = false;
+    createSession(projectPath).then((result) => {
+      if (cancelled) return;
+      const sid =
+        typeof result === "string"
+          ? result
+          : ((result as { sessionId?: string } | undefined)?.sessionId ?? null);
+      if (sid) setSessionId(sid);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionState, sessionId, createSession, projectPath]);
 
   // ── Reset session when connection drops ──────────────────────────
   useEffect(() => {
@@ -320,7 +344,7 @@ export function Chat({ projectPath }: ChatProps) {
         setIsThinking(true);
 
         try {
-          // Create session if we don't have one
+          // Reuse existing session or create one if needed
           let sid = sessionId;
           if (!sid) {
             const result = await createSession(projectPath);
@@ -329,7 +353,7 @@ export function Chat({ projectPath }: ChatProps) {
                 ? result
                 : ((result as { sessionId?: string } | undefined)?.sessionId ??
                   null);
-            setSessionId(sid);
+            if (sid) setSessionId(sid);
           }
 
           if (!sid) throw new Error("Failed to create session");
@@ -486,7 +510,11 @@ export function Chat({ projectPath }: ChatProps) {
           </div>
         </div>
 
-        <ChatInput onSend={handleSend} disabled={isThinking} />
+        <ChatInput
+          onSend={handleSend}
+          disabled={isThinking}
+          slashCommands={slashCommands}
+        />
 
         {/* Dialogs */}
         <PermissionDialog
@@ -543,7 +571,11 @@ export function Chat({ projectPath }: ChatProps) {
       </div>
 
       {/* Input pinned to bottom */}
-      <ChatInput onSend={handleSend} disabled={isThinking} />
+      <ChatInput
+        onSend={handleSend}
+        disabled={isThinking}
+        slashCommands={slashCommands}
+      />
 
       {/* Dialogs */}
       <PermissionDialog

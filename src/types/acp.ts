@@ -58,7 +58,11 @@ export interface McpServerConfig {
 }
 
 /** Connection state of the ACP client */
-export type AcpConnectionState = "disconnected" | "initializing" | "ready" | "error";
+export type AcpConnectionState =
+  | "disconnected"
+  | "initializing"
+  | "ready"
+  | "error";
 
 /** Information about an active ACP session */
 export interface AcpSessionInfo {
@@ -110,6 +114,27 @@ export interface AcpPlanEntry {
   status: "pending" | "in_progress" | "completed" | "failed";
   priority?: "high" | "medium" | "low";
 }
+
+// ── Slash commands ─────────────────────────────────────────────────────
+
+/** A slash command exposed by the connected ACP agent. */
+export interface AcpAvailableCommand {
+  name: string;
+  description: string;
+  input?: AcpCommandInput | null;
+}
+
+/** Hint shown when a command expects free-form text after its name. */
+export interface AcpCommandInput {
+  hint: string;
+}
+
+/** Payload for the "available_commands_update" session update. */
+export interface AcpAvailableCommandsUpdate {
+  availableCommands: AcpAvailableCommand[];
+}
+
+// ── Extended message types ─────────────────────────────────────────────
 
 /** Extended message type for the chat that supports tool calls and streaming */
 export interface AcpChatMessage {

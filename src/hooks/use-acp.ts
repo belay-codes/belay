@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import type { AcpAvailableCommand } from "@/types/acp";
 
 type AcpConnectionState = "disconnected" | "initializing" | "ready" | "error";
 
@@ -132,6 +133,63 @@ export function useAcpError() {
   const clearError = useCallback(() => setError(null), []);
 
   return { error, clearError };
+}
+
+// ── Shared slash commands (module-level singleton) ────────────────────
+// Commands come from the connected agent (global, not per-session).
+// We register ONE listener and broadcast to all hook consumers.
+
+type CommandsListener = (cmds: AcpAvailableCommand[]) => void;
+
+let sharedCommands: AcpAvailableCommand[] = [];
+const sharedListeners = new Set<CommandsListener>();
+let commandsListenerRegistered = false;
+
+function broadcastCommands(cmds: AcpAvailableCommand[]) {
+  sharedCommands = cmds;
+  for (const fn of sharedListeners) fn(cmds);
+}
+
+function registerCommandsListener() {
+  if (commandsListenerRegistered) return;
+  commandsListenerRegistered = true;
+
+  api()?.acpOnUpdate((raw: unknown) => {
+    const notification = raw as Record<string, unknown>;
+    const inner = notification.update as Record<string, unknown> | undefined;
+    if (!inner) return;
+
+    const sessionUpdate = inner.sessionUpdate as string | undefined;
+    if (sessionUpdate === "available_commands_update") {
+      const cmds = inner.availableCommands as AcpAvailableCommand[] | undefined;
+      if (cmds) broadcastCommands(cmds);
+    }
+  });
+
+  // Clear commands when the agent disconnects
+  api()?.acpOnConnectionStateChange((state) => {
+    if (state === "disconnected") broadcastCommands([]);
+  });
+}
+
+export function useSlashCommands(): AcpAvailableCommand[] {
+  const [commands, setCommands] =
+    useState<AcpAvailableCommand[]>(sharedCommands);
+
+  // Sync in case commands arrived before this hook mounted (render-time)
+  if (sharedCommands !== commands) {
+    setCommands(sharedCommands);
+  }
+
+  useEffect(() => {
+    registerCommandsListener();
+    sharedListeners.add(setCommands);
+    return () => {
+      sharedListeners.delete(setCommands);
+    };
+  }, []);
+
+  return commands;
 }
 
 export function useAcpActions() {
