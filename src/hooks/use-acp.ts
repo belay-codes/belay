@@ -36,7 +36,9 @@ export function useConnectionState() {
 
   useEffect(() => {
     api()?.acpGetConnectionState().then(setState);
-    api()?.acpOnConnectionStateChange((s) => setState(s as AcpConnectionState));
+    return api()?.acpOnConnectionStateChange((s) =>
+      setState(s as AcpConnectionState),
+    );
   }, []);
 
   return state;
@@ -105,7 +107,7 @@ export function useAcpUpdates() {
   const [updates, setUpdates] = useState<AcpUpdatePayload[]>([]);
 
   useEffect(() => {
-    api()?.acpOnUpdate((update) => {
+    return api()?.acpOnUpdate((update) => {
       setUpdates((prev) => [...prev, update as unknown as AcpUpdatePayload]);
     });
   }, []);
@@ -122,7 +124,7 @@ export function useAcpError() {
   } | null>(null);
 
   useEffect(() => {
-    api()?.acpOnError((err) => {
+    return api()?.acpOnError((err) => {
       setError(err);
     });
   }, []);

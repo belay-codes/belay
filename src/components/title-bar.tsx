@@ -38,8 +38,12 @@ export function TitleBar() {
       .isMaximized()
       .then(setIsMaximized)
       .catch(() => {});
-    api.onMaximize(() => setIsMaximized(true));
-    api.onUnmaximize(() => setIsMaximized(false));
+    const unsubMaximize = api.onMaximize(() => setIsMaximized(true));
+    const unsubUnmaximize = api.onUnmaximize(() => setIsMaximized(false));
+    return () => {
+      unsubMaximize?.();
+      unsubUnmaximize?.();
+    };
   }, []);
 
   const handleMinimize = useCallback(() => {

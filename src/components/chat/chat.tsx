@@ -5,11 +5,7 @@ import { ChatInput } from "./chat-input";
 import { PermissionDialog } from "./permission-dialog";
 import type { Message, MessageBlock, ToolCallInfo } from "./types";
 
-import {
-  useConnectionState,
-  useAcpActions,
-  useAcpUpdates,
-} from "@/hooks/use-acp";
+import { useConnectionState, useAcpActions } from "@/hooks/use-acp";
 
 // ── Block helpers ────────────────────────────────────────────────────
 
@@ -139,7 +135,6 @@ export function Chat({ projectPath }: ChatProps) {
   // ACP state
   const connectionState = useConnectionState();
   const { sendPrompt, cancelPrompt, createSession } = useAcpActions();
-  const { updates, clearUpdates } = useAcpUpdates();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [permissionRequest, setPermissionRequest] = useState<{
@@ -149,8 +144,6 @@ export function Chat({ projectPath }: ChatProps) {
     options: Array<{ id: string; label: string; kind: string }>;
   } | null>(null);
 
-  // Track which updates have been processed for streaming
-  const processedUpdateIndex = useRef(0);
   // The ID of the assistant message currently being streamed into
   const streamingMessageId = useRef<string | null>(null);
 
@@ -169,29 +162,29 @@ export function Chat({ projectPath }: ChatProps) {
       setPermissionRequest(request as typeof permissionRequest);
     });
     return () => {
-      void unsubscribe;
+      unsubscribe?.();
     };
   }, []);
 
-  // ── Process streaming updates into sequential blocks ─────────────
+  // ── Process streaming updates directly in the listener ───────────
+  // Instead of accumulating updates in state and re-iterating in an
+  // effect (which can duplicate chunks with multiple listeners),
+  // we register ONE listener and process each update immediately
+  // using setMessages functional updaters.
   useEffect(() => {
-    const newUpdates = updates.slice(processedUpdateIndex.current);
-    processedUpdateIndex.current = updates.length;
+    const api = window.electronAPI;
+    if (!api) return;
 
-    if (newUpdates.length === 0) return;
-
-    for (const raw of newUpdates) {
-      // ACP sends SessionNotification: { sessionId, update: SessionUpdate }
+    return api.acpOnUpdate((raw: unknown) => {
       const notification = raw as Record<string, unknown>;
       const inner = notification.update as Record<string, unknown> | undefined;
-      if (!inner) continue;
+      if (!inner) return;
 
       const sessionUpdate = inner.sessionUpdate as string | undefined;
       const targetId = streamingMessageId.current;
-      if (!targetId) continue;
+      if (!targetId) return;
 
       // ── Thought chunk ──────────────────────────────────────────
-      // ContentChunk: { sessionUpdate: "agent_thought_chunk", content: ContentBlock }
       if (sessionUpdate === "agent_thought_chunk") {
         const contentBlock = inner.content as
           | Record<string, unknown>
@@ -215,7 +208,6 @@ export function Chat({ projectPath }: ChatProps) {
       }
 
       // ── Message chunk (text) ───────────────────────────────────
-      // ContentChunk: { sessionUpdate: "agent_message_chunk", content: ContentBlock }
       if (sessionUpdate === "agent_message_chunk") {
         const contentBlock = inner.content as
           | Record<string, unknown>
@@ -239,7 +231,6 @@ export function Chat({ projectPath }: ChatProps) {
       }
 
       // ── Tool call (new) ────────────────────────────────────────
-      // ToolCall: { sessionUpdate: "tool_call", toolCallId, title, status, rawInput, content }
       if (sessionUpdate === "tool_call") {
         const toolCall: Partial<ToolCallInfo> & { id: string } = {
           id: (inner.toolCallId as string) ?? "",
@@ -262,7 +253,6 @@ export function Chat({ projectPath }: ChatProps) {
       }
 
       // ── Tool call update ───────────────────────────────────────
-      // ToolCallUpdate: { sessionUpdate: "tool_call_update", toolCallId, status?, title?, content? }
       if (sessionUpdate === "tool_call_update") {
         const update: Partial<ToolCallInfo> & { id: string } = {
           id: (inner.toolCallId as string) ?? "",
@@ -286,8 +276,8 @@ export function Chat({ projectPath }: ChatProps) {
           ),
         );
       }
-    }
-  }, [updates]);
+    });
+  }, []);
 
   // ── Auto-scroll to bottom on new messages ────────────────────────
   const scrollToBottom = useCallback(() => {
@@ -315,7 +305,6 @@ export function Chat({ projectPath }: ChatProps) {
       const trimmed = content.trim();
       if (!trimmed || isThinking) return;
 
-      // User message — single text block
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: "user",
@@ -329,8 +318,6 @@ export function Chat({ projectPath }: ChatProps) {
       if (isConnected) {
         // ── ACP path: use real agent ───────────────────────────────
         setIsThinking(true);
-        clearUpdates();
-        processedUpdateIndex.current = 0;
 
         try {
           // Create session if we don't have one
@@ -348,7 +335,7 @@ export function Chat({ projectPath }: ChatProps) {
           if (!sid) throw new Error("Failed to create session");
 
           // Create an empty streaming assistant message — blocks will be
-          // appended sequentially by the update processor above.
+          // appended sequentially by the update listener above.
           const assistantId = crypto.randomUUID();
           streamingMessageId.current = assistantId;
           const assistantMessage: Message = {
@@ -439,7 +426,6 @@ export function Chat({ projectPath }: ChatProps) {
       sessionId,
       createSession,
       sendPrompt,
-      clearUpdates,
       projectPath,
     ],
   );

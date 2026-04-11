@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Brain, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { renderMarkdown } from "./markdown";
 
 interface ThinkingBlockProps {
   /** The accumulated thinking content */
@@ -70,9 +71,9 @@ export function ThinkingBlock({
       {expanded && (
         <div className="border-t border-border/40">
           <div ref={scrollRef} className="max-h-75 overflow-y-auto px-3 py-2">
-            <p className="wrap-break-word whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground/80">
-              {content}
-            </p>
+            <div className="wrap-break-word text-[13px] leading-relaxed text-muted-foreground/80">
+              {renderMarkdown(content)}
+            </div>
           </div>
         </div>
       )}

@@ -18,8 +18,8 @@ export interface ElectronAPI {
   maximize: () => void;
   close: () => void;
   isMaximized: () => Promise<boolean>;
-  onMaximize: (callback: () => void) => void;
-  onUnmaximize: (callback: () => void) => void;
+  onMaximize: (callback: () => void) => () => void;
+  onUnmaximize: (callback: () => void) => () => void;
 
   // ACP - Registry & Harness
   acpListRegistry: () => Promise<AcpAgentManifest[]>;
@@ -42,12 +42,12 @@ export interface ElectronAPI {
   acpGetConnectionState: () => Promise<AcpConnectionState>;
   acpOnConnectionStateChange: (
     callback: (state: AcpConnectionState) => void,
-  ) => void;
+  ) => () => void;
 
   // ACP - Errors
   acpOnError: (
     callback: (error: { message: string; stderr: string }) => void,
-  ) => void;
+  ) => () => void;
 
   // ACP - Session
   acpCreateSession: (cwd?: string) => Promise<AcpSessionInfo>;
@@ -62,12 +62,12 @@ export interface ElectronAPI {
     callback: (
       update: AcpMessageChunk | AcpToolCallUpdate | AcpPlanUpdate,
     ) => void,
-  ) => void;
+  ) => () => void;
 
   // ACP - Permissions
   acpOnPermissionRequest: (
     callback: (request: AcpPermissionRequest) => void,
-  ) => void;
+  ) => () => void;
   acpRespondPermission: (requestId: string, optionId: string) => Promise<void>;
 }
 

@@ -10,10 +10,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   close: () => ipcRenderer.send("window:close"),
   isMaximized: () => ipcRenderer.invoke("window:isMaximized"),
   onMaximize: (callback: () => void) => {
-    ipcRenderer.on("window:onMaximize", () => callback());
+    const handler = () => callback();
+    ipcRenderer.on("window:onMaximize", handler);
+    return () => ipcRenderer.removeListener("window:onMaximize", handler);
   },
   onUnmaximize: (callback: () => void) => {
-    ipcRenderer.on("window:onUnmaximize", () => callback());
+    const handler = () => callback();
+    ipcRenderer.on("window:onUnmaximize", handler);
+    return () => ipcRenderer.removeListener("window:onUnmaximize", handler);
   },
 
   // ACP - Registry & Harness
@@ -38,16 +42,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
   acpDisconnect: () => ipcRenderer.invoke("acp:disconnect"),
   acpGetConnectionState: () => ipcRenderer.invoke("acp:getConnectionState"),
   acpOnConnectionStateChange: (callback: (state: string) => void) => {
-    ipcRenderer.on("acp:onConnectionStateChange", (_event, state) =>
-      callback(state),
-    );
+    const handler = (_event: Electron.IpcRendererEvent, state: string) =>
+      callback(state);
+    ipcRenderer.on("acp:onConnectionStateChange", handler);
+    return () =>
+      ipcRenderer.removeListener("acp:onConnectionStateChange", handler);
   },
 
   // ACP - Errors
   acpOnError: (
     callback: (error: { message: string; stderr: string }) => void,
   ) => {
-    ipcRenderer.on("acp:onError", (_event, error) => callback(error));
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      error: { message: string; stderr: string },
+    ) => callback(error);
+    ipcRenderer.on("acp:onError", handler);
+    return () => ipcRenderer.removeListener("acp:onError", handler);
   },
 
   // ACP - Session
@@ -63,14 +74,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // ACP - Streaming updates
   acpOnUpdate: (callback: (update: unknown) => void) => {
-    ipcRenderer.on("acp:onUpdate", (_event, update) => callback(update));
+    const handler = (_event: Electron.IpcRendererEvent, update: unknown) =>
+      callback(update);
+    ipcRenderer.on("acp:onUpdate", handler);
+    return () => ipcRenderer.removeListener("acp:onUpdate", handler);
   },
 
   // ACP - Permissions
   acpOnPermissionRequest: (callback: (request: unknown) => void) => {
-    ipcRenderer.on("acp:onPermissionRequest", (_event, request) =>
-      callback(request),
-    );
+    const handler = (_event: Electron.IpcRendererEvent, request: unknown) =>
+      callback(request);
+    ipcRenderer.on("acp:onPermissionRequest", handler);
+    return () => ipcRenderer.removeListener("acp:onPermissionRequest", handler);
   },
   acpRespondPermission: (requestId: string, optionId: string) =>
     ipcRenderer.invoke("acp:respondPermission", requestId, optionId),
