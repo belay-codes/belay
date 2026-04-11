@@ -577,11 +577,36 @@
         @apply border-border outline-ring/50;
     }
     body {
-        @apply bg-transparent text-foreground;
+        @apply bg-background text-foreground;
         margin: 0;
         overflow: hidden;
     }
     html {
         @apply font-sans;
+    }
+    /* ── Custom scrollbar ───────────────────────────────────── */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: oklch(0.7 0 0 / 25%) transparent;
+    }
+    *:hover {
+        scrollbar-color: oklch(0.7 0 0 / 40%) transparent;
+    }
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: oklch(0.7 0 0 / 25%);
+        border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: oklch(0.7 0 0 / 40%);
+    }
+    ::-webkit-scrollbar-corner {
+        background: transparent;
     }
 }
