@@ -13,19 +13,35 @@ import {
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
+  // Determine icon path based on whether app is packaged
+  const iconPath = !app.isPackaged
+    ? path.join(__dirname, "..", "..", "public", "Belay.png")
+    : path.join(__dirname, "..", "renderer", "Belay.png");
+
   mainWindow = new BrowserWindow({
     width: 1200,
+
     height: 800,
+
     minWidth: 800,
+
     minHeight: 600,
+
     frame: false,
+
     backgroundColor: "#0a0a0a",
+
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+
       contextIsolation: true,
+
       nodeIntegration: false,
     },
+
     title: "Belay",
+
     show: false,
   });
 

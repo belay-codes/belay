@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Minus, Square, X, Globe, Settings } from "lucide-react";
+import belayIcon from "/Belay.svg";
 import { HarnessSelector } from "@/components/harness/harness-selector";
 import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
 import { SettingsDialog } from "@/components/settings/settings-dialog";
@@ -61,6 +62,7 @@ export function TitleBar() {
     >
       {/* Left — app title */}
       <div className="flex items-center gap-2 pl-3.5">
+        <img src={belayIcon} alt="" className="size-5" />
         <span className="text-[13px] font-medium tracking-tight text-foreground">
           Belay
         </span>
