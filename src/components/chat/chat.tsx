@@ -559,6 +559,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // arrive while the session is inactive trigger the unseen badge.
   const seenCountRef = useRef<number | null>(null);
 
+  // Track whether we've already fired a native notification for the
+  // current completion so we don't spam the user on re-renders.
+  const notifiedRef = useRef(false);
+
   // Snapshot the message count once the initial load finishes so
   // previously-saved messages aren't treated as "unseen".
   useEffect(() => {
@@ -571,17 +575,25 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // in sync and clear any unseen badge.  We exclude the thinking state
   // so that streaming assistant messages aren't counted as "seen" —
   // otherwise switching away mid-response would never trigger "unseen".
+  // Also reset the notification flag so a new completion can notify again.
   useEffect(() => {
     if (isSessionActive && !isThinking) {
       seenCountRef.current = messages.length;
+      notifiedRef.current = false;
       markSeen(sessionId);
     }
   }, [isSessionActive, isThinking, messages.length, markSeen, sessionId]);
 
   // Determine the visual status: running → unseen → idle.
+  // Also fires a native OS notification the first time a prompt completes
+  // while the session is not active.
+  const sessionTitle =
+    activeProject?.sessions.find((s) => s.id === sessionId)?.title ?? "Chat";
+
   useEffect(() => {
     if (isThinking) {
       setStatus(sessionId, "running");
+      notifiedRef.current = false;
     } else if (isSessionActive) {
       setStatus(sessionId, "idle");
     } else if (
@@ -592,6 +604,12 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg.role === "assistant" && !lastMsg.isStreaming) {
         setStatus(sessionId, "unseen");
+        if (!notifiedRef.current) {
+          notifiedRef.current = true;
+          new Notification(`${sessionTitle}`, {
+            body: "Agent finished responding",
+          });
+        }
       } else {
         // Last message is a user message or still streaming — not unseen yet
         setStatus(sessionId, "idle");
@@ -600,7 +618,14 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       // Fallback: no new messages, reset to idle so the spinner doesn't stick
       setStatus(sessionId, "idle");
     }
-  }, [messages, isThinking, isSessionActive, sessionId, setStatus]);
+  }, [
+    messages,
+    isThinking,
+    isSessionActive,
+    sessionId,
+    setStatus,
+    sessionTitle,
+  ]);
 
   // ── Permission response handler ──────────────────────────────────
   const handlePermissionRespond = useCallback(
