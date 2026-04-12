@@ -77,9 +77,78 @@ function hexToRgba(hex: string, alpha: number): string {
  * | white           | --muted-foreground| mid-grey, good for "white" in ANSI ctx |
  * | bright variants | chart/ring vars   | the vivid accent colours               |
  */
+/**
+ * Standard ANSI palettes for the default light/dark themes.  These themes
+ * use achromatic `oklch(L 0 0)` chart colours (pure grey), so the CSS-var
+ * mapping produces a completely colourless terminal.  We keep bg/fg/cursor
+ * from the CSS vars but inject proper chromatic ANSI colours instead.
+ */
+const DEFAULT_LIGHT_ANSI = {
+  black: "#e1e2e7",
+  red: "#d20f39",
+  green: "#2b8a3e",
+  yellow: "#e67700",
+  blue: "#1864ab",
+  magenta: "#9c36b5",
+  cyan: "#0c8599",
+  white: "#4c4f69",
+  brightBlack: "#6c6f85",
+  brightRed: "#e03131",
+  brightGreen: "#40c057",
+  brightYellow: "#fab005",
+  brightBlue: "#1c7ed6",
+  brightMagenta: "#ae3ec9",
+  brightCyan: "#15aabf",
+  brightWhite: "#1e1e2e",
+};
+
+const DEFAULT_DARK_ANSI = {
+  black: "#1e1e2e",
+  red: "#f38ba8",
+  green: "#a6e3a1",
+  yellow: "#f9e2af",
+  blue: "#89b4fa",
+  magenta: "#cba6f7",
+  cyan: "#94e2d5",
+  white: "#cdd6f4",
+  brightBlack: "#45475a",
+  brightRed: "#f38ba8",
+  brightGreen: "#a6e3a1",
+  brightYellow: "#f9e2af",
+  brightBlue: "#89b4fa",
+  brightMagenta: "#cba6f7",
+  brightCyan: "#94e2d5",
+  brightWhite: "#ffffff",
+};
+
 function buildXtermTheme() {
   const background = cssVarToHex("--background");
   const foreground = cssVarToHex("--foreground");
+
+  // Named themes (catppuccin-*, dracula, nord, …) carry chromatic chart
+  // colours, so the CSS-var → ANSI mapping works perfectly.  The default
+  // light/dark themes use achromatic oklch(L 0 0) chart colours — every
+  // slot resolves to a shade of grey.  Detect that case and fall back to
+  // a proper ANSI palette while still reading bg/fg from CSS vars.
+  const hasNamedTheme = [...document.documentElement.classList].some((c) =>
+    c.startsWith("theme-"),
+  );
+
+  if (!hasNamedTheme) {
+    const isDark = document.documentElement.classList.contains("dark");
+    const ansi = isDark ? DEFAULT_DARK_ANSI : DEFAULT_LIGHT_ANSI;
+    return {
+      background,
+      foreground,
+      cursor: foreground,
+      cursorAccent: background,
+      selectionBackground: hexToRgba(foreground, 0.2),
+      selectionInactiveBackground: hexToRgba(foreground, 0.1),
+      ...ansi,
+    };
+  }
+
+  // Named theme — map CSS vars to ANSI slots.
   const card = cssVarToHex("--card");
   const primary = cssVarToHex("--primary");
   const destructive = cssVarToHex("--destructive");
