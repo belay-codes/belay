@@ -543,14 +543,27 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
 
   // ── Auto-scroll to bottom on new messages ────────────────────────
   const scrollToBottom = useCallback(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
     }
   }, []);
 
+  // Scroll when messages arrive or thinking state changes.
   useEffect(() => {
     scrollToBottom();
   }, [messages, isThinking, scrollToBottom]);
+
+  // When a session becomes visible (hidden → shown), the scroll
+  // container may not have had dimensions yet during initial load.
+  // Defer a scroll until after the browser has laid out the element.
+  useEffect(() => {
+    if (!isSessionActive) return;
+    const raf = requestAnimationFrame(() => {
+      scrollToBottom();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isSessionActive, scrollToBottom]);
 
   // ── Sync session status to the shared store ──────────────────────
   // Tracks how many messages the user has actually seen (i.e. while the
