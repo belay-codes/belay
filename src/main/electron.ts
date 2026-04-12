@@ -15,14 +15,18 @@ import {
   updateHarness,
 } from "./acp/harness-store.js";
 
+// Set the App User Model ID so Windows shows "Belay" (not "electron")
+// as the notification source and groups the taskbar icon correctly.
+app.setAppUserModelId("Belay");
+
+// Determine icon path based on whether app is packaged
+const iconPath = !app.isPackaged
+  ? path.join(__dirname, "..", "..", "public", "Belay.png")
+  : path.join(__dirname, "..", "renderer", "Belay.png");
+
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
-  // Determine icon path based on whether app is packaged
-  const iconPath = !app.isPackaged
-    ? path.join(__dirname, "..", "..", "public", "Belay.png")
-    : path.join(__dirname, "..", "renderer", "Belay.png");
-
   mainWindow = new BrowserWindow({
     width: 1200,
 
@@ -95,10 +99,7 @@ ipcMain.handle("window:isMaximized", () => {
 // ── Notifications ─────────────────────────────────────────────────────
 
 ipcMain.on("notification:send", (_event, title: string, body: string) => {
-  const notifyIcon = !app.isPackaged
-    ? path.join(__dirname, "..", "..", "public", "Belay.png")
-    : path.join(__dirname, "..", "renderer", "Belay.png");
-  new Notification({ title, body, icon: notifyIcon }).show();
+  new Notification({ title, body, icon: iconPath }).show();
 });
 
 // ── IPC handlers for project operations ──────────────────────────────
