@@ -815,8 +815,14 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       const msgIndex = messages.findIndex((m) => m.id === messageId);
       if (msgIndex < 0) return;
 
-      // Copy messages up to and including the branched message
-      const branchedMessages = messages.slice(0, msgIndex + 1);
+      // Copy messages up to and including the branched message, plus the
+      // assistant response that follows it (if any).
+      const endIndex =
+        msgIndex + 1 < messages.length &&
+        messages[msgIndex + 1].role === "assistant"
+          ? msgIndex + 2
+          : msgIndex + 1;
+      const branchedMessages = messages.slice(0, endIndex);
 
       // Create a new session
       const newSessionId = addSession(projectId);
