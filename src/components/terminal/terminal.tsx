@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { useTheme } from "@/hooks/use-theme";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -9,7 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 
 /**
  * Hidden probe element used to resolve CSS custom properties (including
- * oklch, hsl, etc.) to computed `rgb()` values. Created lazily, kept
+ * oklch, hsl, etc.) to computed `rgb()` values.  Created lazily, kept
  * for the lifetime of the page.
  */
 let _probe: HTMLDivElement | null = null;
@@ -137,16 +136,12 @@ interface TerminalProps {
 export function TerminalView({ id, cwd, onClose }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
 
-  // Re-read whenever the user picks a new theme or the system
-  // preference changes while "System" is active.
-  const { theme, isDark } = useTheme();
-
-  // ── Create terminal instance (once per id) ─────────────────────
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
 
+    // ── Create terminal ────────────────────────────────────────────
     const terminal = new Terminal({
       theme: buildXtermTheme(),
       fontFamily:
@@ -158,27 +153,26 @@ export function TerminalView({ id, cwd, onClose }: TerminalProps) {
 
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
-    terminal.open(containerRef.current);
+    terminal.open(container);
     fitAddon.fit();
 
     terminalRef.current = terminal;
-    fitAddonRef.current = fitAddon;
 
-    // Keep terminal sized to its container
-    const observer = new ResizeObserver(() => fitAddon.fit());
-    observer.observe(containerRef.current);
+    // ── Keep terminal sized to its container ───────────────────────
+    const resizeObserver = new ResizeObserver(() => fitAddon.fit());
+    resizeObserver.observe(container);
 
-    // Terminal input → PTY
+    // ── Terminal input → PTY ───────────────────────────────────────
     const dataDisposable = terminal.onData((data) => {
       window.electronAPI?.terminalWrite(id, data);
     });
 
-    // Terminal resize → PTY
+    // ── Terminal resize → PTY ──────────────────────────────────────
     const resizeDisposable = terminal.onResize(() => {
       window.electronAPI?.terminalResize(id, terminal.cols, terminal.rows);
     });
 
-    // PTY output → terminal
+    // ── PTY output → terminal ──────────────────────────────────────
     const unregisterData = window.electronAPI?.onTerminalData(
       id,
       (data: string) => {
@@ -186,32 +180,43 @@ export function TerminalView({ id, cwd, onClose }: TerminalProps) {
       },
     );
 
-    // PTY exit → close
+    // ── PTY exit → close ───────────────────────────────────────────
     const unregisterExit = window.electronAPI?.onTerminalExit(id, () => {
       onClose();
     });
 
-    // Spawn the PTY process
+    // ── Spawn the PTY process ──────────────────────────────────────
     window.electronAPI?.terminalSpawn(id, cwd);
 
+    // ── React to theme changes via MutationObserver ────────────────
+    //
+    // We watch `class` mutations on <html> directly instead of relying
+    // on React state + useEffect.  The app's useTheme hook updates the
+    // DOM classes in its *own* useEffect — which fires in the same
+    // batch as this component's effects, with no guaranteed ordering.
+    // Reading CSS vars in a useEffect can therefore race and read the
+    // *previous* theme's values.  MutationObserver fires only after the
+    // DOM has actually changed, so we always read the correct colours.
+    const themeObserver = new MutationObserver(() => {
+      terminal.options.theme = buildXtermTheme();
+    });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    // ── Cleanup ────────────────────────────────────────────────────
     return () => {
-      observer.disconnect();
+      themeObserver.disconnect();
+      resizeObserver.disconnect();
       dataDisposable.dispose();
       resizeDisposable.dispose();
       unregisterData?.();
       unregisterExit?.();
       terminal.dispose();
       terminalRef.current = null;
-      fitAddonRef.current = null;
     };
   }, [id, cwd, onClose]);
-
-  // ── Reactively update terminal theme when app theme changes ────
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-    terminal.options.theme = buildXtermTheme();
-  }, [theme, isDark]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }
