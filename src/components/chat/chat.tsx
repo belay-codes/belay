@@ -147,7 +147,8 @@ interface ChatProps {
 
 export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // ── Persisted message state ──────────────────────────────────────
-  const { messages, setMessages, saveMessages } = useSessionMessages(sessionId);
+  const { messages, setMessages, saveMessages, isLoaded } =
+    useSessionMessages(sessionId);
   const messageStore = useMessageStore();
 
   const [isThinking, setIsThinking] = useState(false);
@@ -550,25 +551,47 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   }, [messages, isThinking, scrollToBottom]);
 
   // ── Sync session status to the shared store ──────────────────────
-  // Running while thinking; when thinking finishes on a non-active
-  // session mark it unseen so the sidebar shows a badge, otherwise idle.
-  // Only transition to "unseen" when coming from "running" so that
-  // inactive sessions aren't spuriously marked on first mount.
-  const prevThinkingRef = useRef(false);
+  // Tracks how many messages the user has actually seen (i.e. while the
+  // session was active).  After the initial load from disk we snapshot
+  // the count so that previously-saved messages are never flagged as
+  // "unseen".  From that point on, any new assistant messages that
+  // arrive while the session is inactive trigger the unseen badge.
+  const seenCountRef = useRef<number | null>(null);
+
+  // Snapshot the message count once the initial load finishes so
+  // previously-saved messages aren't treated as "unseen".
+  useEffect(() => {
+    if (isLoaded && seenCountRef.current === null) {
+      seenCountRef.current = messages.length;
+    }
+  }, [isLoaded, messages.length]);
+
+  // While the session is active, keep the seen-count in sync and
+  // clear any unseen badge.
+  useEffect(() => {
+    if (isSessionActive) {
+      seenCountRef.current = messages.length;
+      markSeen(sessionId);
+    }
+  }, [isSessionActive, messages.length, markSeen, sessionId]);
+
+  // Determine the visual status: running → unseen → idle.
   useEffect(() => {
     if (isThinking) {
       setStatus(sessionId, "running");
-    } else if (prevThinkingRef.current) {
-      // Transitioning from running → only mark unseen if not active
-      setStatus(sessionId, isSessionActive ? "idle" : "unseen");
+    } else if (isSessionActive) {
+      setStatus(sessionId, "idle");
+    } else if (
+      seenCountRef.current !== null &&
+      messages.length > seenCountRef.current &&
+      messages.length > 0
+    ) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.role === "assistant" && !lastMsg.isStreaming) {
+        setStatus(sessionId, "unseen");
+      }
     }
-    prevThinkingRef.current = isThinking;
-  }, [isThinking, isSessionActive, sessionId, setStatus]);
-
-  // Mark the session as seen whenever it becomes the active session
-  useEffect(() => {
-    if (isSessionActive) markSeen(sessionId);
-  }, [isSessionActive, markSeen, sessionId]);
+  }, [messages, isThinking, isSessionActive, sessionId, setStatus]);
 
   // ── Permission response handler ──────────────────────────────────
   const handlePermissionRespond = useCallback(

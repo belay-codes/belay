@@ -607,7 +607,11 @@ export function ProjectSidebar() {
     }
     if (status === "unseen") {
       return (
-        <Circle className={iconClass} fill="currentColor" strokeWidth={0} />
+        <Circle
+          className="size-3 shrink-0 text-primary"
+          fill="currentColor"
+          strokeWidth={0}
+        />
       );
     }
     return <MessageSquare className={iconClass} />;
