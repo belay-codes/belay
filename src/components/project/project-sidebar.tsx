@@ -1202,9 +1202,47 @@ export function ProjectSidebar() {
                                   ].join(" ")}
                                 />
 
-                                <span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
-                                  {session.title}
-                                </span>
+                                {renamingSessionId === session.id ? (
+                                  <input
+                                    type="text"
+                                    autoFocus
+                                    defaultValue={session.title}
+                                    className="min-w-0 flex-1 bg-transparent text-[12px] leading-tight text-foreground outline-none ring-1 ring-primary rounded px-1 -mx-1"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onBlur={(e) => {
+                                      const value = e.target.value.trim();
+                                      if (value && value !== session.title) {
+                                        renameSession(
+                                          project.id,
+                                          session.id,
+                                          value,
+                                        );
+                                      }
+                                      setRenamingSessionId(null);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        const value = (
+                                          e.target as HTMLInputElement
+                                        ).value.trim();
+                                        if (value && value !== session.title) {
+                                          renameSession(
+                                            project.id,
+                                            session.id,
+                                            value,
+                                          );
+                                        }
+                                        setRenamingSessionId(null);
+                                      } else if (e.key === "Escape") {
+                                        setRenamingSessionId(null);
+                                      }
+                                    }}
+                                  />
+                                ) : (
+                                  <span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
+                                    {session.title}
+                                  </span>
+                                )}
 
                                 <button
                                   type="button"
