@@ -11,11 +11,32 @@ import {
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
 
+// ── Persisted expanded state ─────────────────────────────────────────
+
+const EXPANDED_STORAGE_KEY = "belay-expanded-projects";
+
+function loadExpanded(): Set<string> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_STORAGE_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    // Ignore corrupt data
+  }
+  return new Set();
+}
+
+function persistExpanded(set: Set<string>): void {
+  try {
+    localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify([...set]));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
 export function ProjectSidebar() {
   const [isOpening, setIsOpening] = useState(false);
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
-    new Set(),
-  );
+  const [expandedProjects, setExpandedProjects] =
+    useState<Set<string>>(loadExpanded);
 
   const {
     openProjects,
@@ -26,6 +47,7 @@ export function ProjectSidebar() {
     addSession,
     removeSession,
     setActiveSession,
+    pathToId,
   } = useProjectStore();
 
   const handleOpenDirectory = useCallback(async () => {
@@ -34,13 +56,22 @@ export function ProjectSidebar() {
       const selectedPath = await window.electronAPI?.projectOpenDirectory();
       if (selectedPath) {
         openProject(selectedPath);
+        // Auto-expand the newly opened project
+        const id = pathToId(selectedPath);
+        setExpandedProjects((prev) => {
+          if (prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.add(id);
+          persistExpanded(next);
+          return next;
+        });
       }
     } catch (err) {
       console.error("Failed to open directory:", err);
     } finally {
       setIsOpening(false);
     }
-  }, [openProject]);
+  }, [openProject, pathToId]);
 
   const handleCloseProject = useCallback(
     (e: React.MouseEvent, projectId: string) => {
@@ -58,17 +89,23 @@ export function ProjectSidebar() {
     [removeSession],
   );
 
-  const toggleExpanded = useCallback((projectId: string) => {
-    setExpandedProjects((prev) => {
-      const next = new Set(prev);
-      if (next.has(projectId)) {
-        next.delete(projectId);
-      } else {
-        next.add(projectId);
-      }
-      return next;
-    });
-  }, []);
+  const toggleExpanded = useCallback(
+    (projectId: string, canCollapse: boolean) => {
+      setExpandedProjects((prev) => {
+        // Don't allow collapsing when locked (active project with open session)
+        if (prev.has(projectId) && !canCollapse) return prev;
+        const next = new Set(prev);
+        if (next.has(projectId)) {
+          next.delete(projectId);
+        } else {
+          next.add(projectId);
+        }
+        persistExpanded(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const handleProjectClick = useCallback(
     (projectId: string) => {
@@ -78,6 +115,7 @@ export function ProjectSidebar() {
         if (prev.has(projectId)) return prev;
         const next = new Set(prev);
         next.add(projectId);
+        persistExpanded(next);
         return next;
       });
     },
@@ -119,6 +157,8 @@ export function ProjectSidebar() {
             {openProjects.map((project) => {
               const isActive = project.id === activeProjectId;
               const isExpanded = expandedProjects.has(project.id);
+              // Active project with a session cannot be collapsed
+              const canCollapse = !(isActive && project.activeSessionId);
 
               return (
                 <div key={project.id}>
@@ -138,9 +178,14 @@ export function ProjectSidebar() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggleExpanded(project.id);
+                        toggleExpanded(project.id, canCollapse);
                       }}
-                      className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/60 hover:text-foreground transition-colors"
+                      className={[
+                        "flex size-4 shrink-0 items-center justify-center rounded transition-colors",
+                        !canCollapse && isExpanded
+                          ? "text-muted-foreground/25 cursor-default"
+                          : "text-muted-foreground/60 hover:text-foreground",
+                      ].join(" ")}
                       aria-label={isExpanded ? "Collapse" : "Expand"}
                     >
                       {isExpanded ? (

@@ -85,6 +85,57 @@ function upsertToolCallBlock(
   ];
 }
 
+// ── Agent capabilities cache (persists to localStorage) ────────────
+// Stores modes and slash commands per agent so they're available
+// instantly when reopening a saved session, without waiting for the
+// agent process to start and create a new ACP session.
+// Persisted to localStorage so the cache survives app restarts.
+
+interface CachedCapabilities {
+  modes: AcpSessionMode[];
+  currentModeId: string | null;
+  slashCommands: AcpAvailableCommand[];
+}
+
+const CAPABILITIES_STORAGE_KEY = "belay-agent-capabilities";
+
+function loadCapabilitiesCache(): Map<string, CachedCapabilities> {
+  try {
+    const raw = localStorage.getItem(CAPABILITIES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, CachedCapabilities>;
+      return new Map(Object.entries(parsed));
+    }
+  } catch {
+    // Ignore corrupt data
+  }
+  return new Map();
+}
+
+function saveCapabilitiesCache(cache: Map<string, CachedCapabilities>): void {
+  try {
+    const obj = Object.fromEntries(cache.entries());
+    localStorage.setItem(CAPABILITIES_STORAGE_KEY, JSON.stringify(obj));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
+const agentCapabilitiesCache = loadCapabilitiesCache();
+
+function updateCapabilitiesCache(
+  agentId: string,
+  partial: Partial<CachedCapabilities>,
+): void {
+  const existing = agentCapabilitiesCache.get(agentId) ?? {
+    modes: [],
+    currentModeId: null,
+    slashCommands: [],
+  };
+  agentCapabilitiesCache.set(agentId, { ...existing, ...partial });
+  saveCapabilitiesCache(agentCapabilitiesCache);
+}
+
 // ── Chat Component ─────────────────────────────────────────────────
 
 interface ChatProps {
@@ -125,12 +176,21 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // without waiting for React to re-render and re-register the effect.
   const acpSessionIdRef = useRef<string | null>(null);
 
-  // Slash commands populated from the main streaming listener
-  const [slashCommands, setSlashCommands] = useState<AcpAvailableCommand[]>([]);
+  // Slash commands & modes — pre-populated from cache for instant
+  // availability on reload, refreshed when the agent sends updates.
+  const cached = agentCapabilitiesCache.get(agentId ?? "");
+
+  const [slashCommands, setSlashCommands] = useState<AcpAvailableCommand[]>(
+    () => cached?.slashCommands ?? [],
+  );
 
   // ── Session modes ──────────────────────────────────────────────────
-  const [availableModes, setAvailableModes] = useState<AcpSessionMode[]>([]);
-  const [currentModeId, setCurrentModeId] = useState<string | null>(null);
+  const [availableModes, setAvailableModes] = useState<AcpSessionMode[]>(
+    () => cached?.modes ?? [],
+  );
+  const [currentModeId, setCurrentModeId] = useState<string | null>(
+    () => cached?.currentModeId ?? null,
+  );
 
   const [permissionRequest, setPermissionRequest] = useState<{
     requestId: string;
@@ -141,6 +201,26 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
 
   // The ID of the assistant message currently being streamed into
   const streamingMessageId = useRef<string | null>(null);
+
+  // Track whether we've ever connected, so the reset effect doesn't
+  // wipe cached modes/commands on initial mount (connectionState starts
+  // as "disconnected" but we haven't actually lost a connection yet).
+  const hasConnectedRef = useRef(false);
+
+  // ── Restore modes/commands from cache when agentId changes ──────
+  useEffect(() => {
+    if (!agentId) return;
+    const cached = agentCapabilitiesCache.get(agentId);
+    if (cached) {
+      setAvailableModes(cached.modes);
+      setCurrentModeId(cached.currentModeId);
+      setSlashCommands(cached.slashCommands);
+    } else {
+      setAvailableModes([]);
+      setCurrentModeId(null);
+      setSlashCommands([]);
+    }
+  }, [agentId]);
 
   // ── Auto-connect to saved agent on mount ─────────────────────────
   useEffect(() => {
@@ -224,6 +304,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         if (modes) {
           setAvailableModes(modes.availableModes);
           setCurrentModeId(modes.currentModeId);
+          updateCapabilitiesCache(agentId, {
+            modes: modes.availableModes,
+            currentModeId: modes.currentModeId,
+          });
         }
       }
     });
@@ -233,13 +317,18 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   }, [connectionState, acpSessionId, agentId, createSession, projectPath]);
 
   // ── Reset ACP session when connection drops ──────────────────────
+  // Skipped on initial mount (hasConnectedRef guard) so we don't wipe
+  // the cached modes/commands that were restored from localStorage.
   useEffect(() => {
-    if (connectionState === "disconnected") {
+    if (connectionState === "disconnected" && hasConnectedRef.current) {
       setAcpSessionId(null);
       acpSessionIdRef.current = null;
       setAvailableModes([]);
       setCurrentModeId(null);
       setSlashCommands([]);
+    }
+    if (connectionState === "ready") {
+      hasConnectedRef.current = true;
     }
   }, [connectionState]);
 
@@ -307,7 +396,11 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       // ── Mode update (no streaming message needed) ───────────────
       if (sessionUpdate === "current_mode_update") {
         const modeId = inner.currentModeId as string | undefined;
-        if (modeId) setCurrentModeId(modeId);
+        if (modeId) {
+          setCurrentModeId(modeId);
+          if (agentId)
+            updateCapabilitiesCache(agentId, { currentModeId: modeId });
+        }
         return;
       }
 
@@ -316,7 +409,11 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         const cmds = inner.availableCommands as
           | AcpAvailableCommand[]
           | undefined;
-        if (cmds) setSlashCommands(cmds);
+        if (cmds) {
+          setSlashCommands(cmds);
+          if (agentId)
+            updateCapabilitiesCache(agentId, { slashCommands: cmds });
+        }
         return;
       }
 
@@ -548,6 +645,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
               if (modes) {
                 setAvailableModes(modes.availableModes);
                 setCurrentModeId(modes.currentModeId);
+                updateCapabilitiesCache(agentId!, {
+                  modes: modes.availableModes,
+                  currentModeId: modes.currentModeId,
+                });
               }
             }
           }
