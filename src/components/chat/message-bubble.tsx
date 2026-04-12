@@ -1,4 +1,3 @@
-import { Bot, User } from "lucide-react";
 import { ThinkingBlock } from "./thinking-block";
 import { ToolCallDisplay } from "./tool-call-display";
 import { renderMarkdown } from "./markdown";
@@ -43,31 +42,21 @@ interface MessageBubbleProps {
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
-  // ── User messages: simple text bubble ────────────────────────────
+  // ── User messages: terminal-style input ──────────────────────────
   if (isUser) {
     const textBlock = message.blocks.find((b) => b.type === "text");
     const content = textBlock?.type === "text" ? textBlock.content : "";
 
     return (
-      <div className="flex flex-row-reverse gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          <User className="size-4" />
-        </div>
-
-        <div className="max-w-[75%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-[14px] leading-relaxed text-primary-foreground">
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-lg rounded-br-sm bg-primary px-3.5 py-2 text-[14px] leading-relaxed text-primary-foreground">
           <p className="whitespace-pre-wrap wrap-break-word">{content}</p>
-          <span className="mt-1 block text-right text-[11px] opacity-50">
-            {message.timestamp.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span>
         </div>
       </div>
     );
   }
 
-  // ── Assistant messages: avatar + sequential blocks ───────────────
+  // ── Assistant messages: full-width block output ──────────────────
   const hasContent = message.blocks.some(
     (b) =>
       (b.type === "thinking" && b.content.length > 0) ||
@@ -75,42 +64,29 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       b.type === "tool_call",
   );
 
-  return (
-    <div className="flex gap-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Bot className="size-4" />
+  if (!hasContent) {
+    return (
+      <div className="flex items-center gap-1.5 py-1">
+        <span className="inline-block size-1.5 animate-bounce rounded-full bg-foreground/40 [animation-delay:0ms]" />
+        <span className="inline-block size-1.5 animate-bounce rounded-full bg-foreground/40 [animation-delay:150ms]" />
+        <span className="inline-block size-1.5 animate-bounce rounded-full bg-foreground/40 [animation-delay:300ms]" />
       </div>
+    );
+  }
 
-      <div className="min-w-0 max-w-[75%]">
-        {hasContent ? (
-          <div className="space-y-2">
-            {message.blocks.map((block) => (
-              <BlockRenderer
-                key={block.id}
-                block={block}
-                isStreaming={
-                  message.isStreaming &&
-                  block.id === message.blocks[message.blocks.length - 1]?.id
-                }
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
-            <div className="flex items-center gap-1">
-              <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
-              <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
-              <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
-            </div>
-          </div>
-        )}
-
-        <span className="mt-1 block text-left text-[11px] opacity-50">
-          {message.timestamp.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </span>
+  return (
+    <div className="w-full">
+      <div className="space-y-2">
+        {message.blocks.map((block) => (
+          <BlockRenderer
+            key={block.id}
+            block={block}
+            isStreaming={
+              message.isStreaming &&
+              block.id === message.blocks[message.blocks.length - 1]?.id
+            }
+          />
+        ))}
       </div>
     </div>
   );

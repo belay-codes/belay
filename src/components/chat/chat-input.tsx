@@ -259,7 +259,7 @@ export function ChatInput({
   }
 
   return (
-    <div className="border-t border-border bg-background p-3">
+    <div className="p-3">
       <div className="relative">
         {/* ── Autocomplete dropdown ──────────────────────────────── */}
         {menuState.type !== "hidden" && menuState.items.length > 0 && (
@@ -341,7 +341,7 @@ export function ChatInput({
         )}
 
         {/* ── Input row ──────────────────────────────────────────── */}
-        <div className="flex items-end gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/20">
+        <div className="flex items-end gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/20">
           <textarea
             ref={textareaRef}
             value={value}
@@ -364,9 +364,6 @@ export function ChatInput({
           </Button>
         </div>
       </div>
-      <p className="mt-1.5 text-center text-[11px] text-muted-foreground/60">
-        Belay can make mistakes. Consider checking important information.
-      </p>
     </div>
   );
 }

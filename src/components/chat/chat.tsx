@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Bot, Sparkles, ChevronDown, Circle, Cpu, Zap } from "lucide-react";
+import { ChevronDown, Cpu, Zap } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
 import { PermissionDialog } from "./permission-dialog";
@@ -666,13 +666,6 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
 
   // ── Agent selector UI ────────────────────────────────────────────
   const selectedHarness = harnesses.find((h) => h.agentId === agentId);
-  const agentStateColor =
-    {
-      disconnected: "text-muted-foreground",
-      initializing: "text-yellow-500",
-      ready: "text-green-500",
-      error: "text-red-500",
-    }[connectionState] ?? "text-muted-foreground";
 
   // ── Mode selector ────────────────────────────────────────────────
   const [modeSelectorOpen, setModeSelectorOpen] = useState(false);
@@ -766,22 +759,13 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       >
         <Cpu className="size-3" />
         {agentId && connectionState === "ready" && selectedHarness ? (
-          <>
-            <Circle className={`size-1.5 fill-current ${agentStateColor}`} />
-            <span className="max-w-[140px] truncate font-medium">
-              {selectedHarness.name}
-            </span>
-          </>
+          <span className="max-w-[140px] truncate font-medium">
+            {selectedHarness.name}
+          </span>
         ) : agentId && connectionState === "initializing" ? (
-          <>
-            <Circle className={`size-1.5 fill-current ${agentStateColor}`} />
-            <span className="max-w-[140px] truncate">Connecting…</span>
-          </>
+          <span className="max-w-[140px] truncate">Connecting…</span>
         ) : agentId && connectionState === "error" ? (
-          <>
-            <Circle className={`size-1.5 fill-current ${agentStateColor}`} />
-            <span className="max-w-[140px] truncate">Error</span>
-          </>
+          <span className="max-w-[140px] truncate">Error</span>
         ) : (
           <span>Select agent</span>
         )}
@@ -829,28 +813,11 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   if (messages.length === 0 && !isThinking) {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10">
-            <Sparkles className="size-7 text-primary" />
-          </div>
-
-          <div className="text-center">
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">
-              How can I help you?
-            </h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              {agentId && connectionState === "ready"
-                ? "Connected to an agent. Ask me anything!"
-                : agentId && connectionState === "initializing"
-                  ? "Connecting to agent…"
-                  : "Select an agent below, or just start typing."}
-            </p>
-          </div>
-        </div>
+        <div className="flex-1" />
 
         {/* Agent selector + input pinned to bottom */}
         <div className="border-t border-border/40 px-4 pt-2 pb-3">
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-4xl">
             <div className="mb-2 flex items-center gap-2">
               {agentSelector}
               {modeSelector}
@@ -884,25 +851,18 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     <div className="flex h-full flex-col">
       {/* Message list */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6">
-          <div className="space-y-5">
+        <div className="mx-auto max-w-4xl px-4 py-6">
+          <div className="space-y-4">
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
 
             {/* Typing indicator (only when not streaming via ACP) */}
             {isThinking && !isStreaming && (
-              <div className="flex items-start gap-3">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                  <Bot className="size-4 text-primary" />
-                </div>
-                <div className="rounded-2xl rounded-tl-sm bg-muted px-4 py-3">
-                  <div className="flex items-center gap-1">
-                    <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
-                    <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
-                    <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
-                  </div>
-                </div>
+              <div className="flex items-center gap-1 px-1 py-2">
+                <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:0ms]" />
+                <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:150ms]" />
+                <span className="inline-block size-1.5 animate-bounce rounded-full bg-muted-foreground/50 [animation-delay:300ms]" />
               </div>
             )}
 
@@ -922,10 +882,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         </div>
       </div>
 
-      {/* Input pinned to bottom */}
       {/* Agent selector + input pinned to bottom */}
       <div className="border-t border-border/40 px-4 pt-2 pb-3">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-4xl">
           <div className="mb-2 flex items-center gap-2">
             {agentSelector}
             {modeSelector}
