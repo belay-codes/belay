@@ -64,7 +64,41 @@ function renderInline(text: string): ReactNode[] {
   return nodes;
 }
 
+// ── Table helpers ─────────────────────────────────────────────────────
+
+/** Does `line` look like a pipe-delimited table row? */
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length > 2;
+}
+
+/** Does `line` look like a table separator (`| --- | :---: | ---: |`)? */
+function isSeparatorRow(line: string): boolean {
+  if (!isTableRow(line)) return false;
+  const cells = splitTableRow(line);
+  return cells.every((c) => /^:?-+:?$/.test(c.trim()));
+}
+
+/** Parse alignment from a separator cell like `:---`, `:---:`, `---:`. */
+function parseAlignment(cell: string): "left" | "center" | "right" {
+  const t = cell.trim();
+  if (t.startsWith(":") && t.endsWith(":")) return "center";
+  if (t.endsWith(":")) return "right";
+  return "left";
+}
+
+/** Split `| a | b | c |` into `["a","b","c"]`. */
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .split("|")
+    .slice(1, -1)
+    .map((c) => c.trim());
+}
+
 // ── Block-level parsing ───────────────────────────────────────────────
+
+type Alignment = "left" | "center" | "right";
 
 interface Block {
   kind:
@@ -74,9 +108,14 @@ interface Block {
     | "ordered"
     | "blockquote"
     | "hr"
-    | "paragraph";
+    | "paragraph"
+    | "table";
   content: string;
   level?: number; // heading level
+  // Table-specific fields
+  headers?: string[];
+  alignments?: Alignment[];
+  rows?: string[][];
 }
 
 /**
@@ -114,7 +153,7 @@ function parseBlocks(text: string): Block[] {
       continue;
     }
 
-    // Process non-code text line-by-line
+    // Process non-code text line-by-line (index-based for table look-ahead)
     const lines = seg.text.split("\n");
     let buffer: string[] = [];
 
@@ -126,8 +165,37 @@ function parseBlocks(text: string): Block[] {
       buffer = [];
     };
 
-    for (const rawLine of lines) {
-      const line = rawLine;
+    let li = 0;
+    while (li < lines.length) {
+      const line = lines[li];
+
+      // ── Table detection ──────────────────────────────────────────
+      // A table starts with a header row followed by a separator row.
+      if (
+        isTableRow(line) &&
+        li + 1 < lines.length &&
+        isSeparatorRow(lines[li + 1])
+      ) {
+        flushParagraph();
+        const headers = splitTableRow(line);
+        const alignments = splitTableRow(lines[li + 1]).map(parseAlignment);
+        const rows: string[][] = [];
+        li += 2; // skip header + separator
+
+        while (li < lines.length && isTableRow(lines[li])) {
+          rows.push(splitTableRow(lines[li]));
+          li++;
+        }
+
+        blocks.push({
+          kind: "table",
+          content: "",
+          headers,
+          alignments,
+          rows,
+        });
+        continue;
+      }
 
       // Heading
       const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
@@ -138,6 +206,7 @@ function parseBlocks(text: string): Block[] {
           content: headingMatch[2],
           level: headingMatch[1].length,
         });
+        li++;
         continue;
       }
 
@@ -145,6 +214,7 @@ function parseBlocks(text: string): Block[] {
       if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim())) {
         flushParagraph();
         blocks.push({ kind: "hr", content: "" });
+        li++;
         continue;
       }
 
@@ -153,6 +223,7 @@ function parseBlocks(text: string): Block[] {
         flushParagraph();
         const content = line.replace(/^\s*[-*]\s+/, "");
         blocks.push({ kind: "bullet", content });
+        li++;
         continue;
       }
 
@@ -161,6 +232,7 @@ function parseBlocks(text: string): Block[] {
         flushParagraph();
         const content = line.replace(/^\s*\d+\.\s+/, "");
         blocks.push({ kind: "ordered", content });
+        li++;
         continue;
       }
 
@@ -169,17 +241,20 @@ function parseBlocks(text: string): Block[] {
         flushParagraph();
         const content = line.replace(/^>\s?/, "");
         blocks.push({ kind: "blockquote", content });
+        li++;
         continue;
       }
 
       // Blank line — break paragraph
       if (line.trim() === "") {
         flushParagraph();
+        li++;
         continue;
       }
 
       // Regular text — accumulate into paragraph
       buffer.push(line);
+      li++;
     }
 
     flushParagraph();
@@ -198,10 +273,14 @@ interface RenderItem {
     | "ordered-list"
     | "blockquote"
     | "hr"
-    | "paragraph";
+    | "paragraph"
+    | "table";
   items?: Block[];
   content?: string;
   level?: number;
+  headers?: string[];
+  alignments?: Alignment[];
+  rows?: string[][];
 }
 
 function groupBlocks(blocks: Block[]): RenderItem[] {
@@ -262,6 +341,14 @@ function groupBlocks(blocks: Block[]): RenderItem[] {
       case "paragraph":
         items.push({ type: "paragraph", content: block.content });
         break;
+      case "table":
+        items.push({
+          type: "table",
+          headers: block.headers,
+          alignments: block.alignments,
+          rows: block.rows,
+        });
+        break;
     }
 
     i++;
@@ -279,6 +366,12 @@ const headingSizes: Record<number, string> = {
   4: "text-[15px] font-semibold",
   5: "text-[14px] font-semibold",
   6: "text-[13px] font-semibold",
+};
+
+const alignClass: Record<Alignment, string> = {
+  left: "text-left",
+  center: "text-center",
+  right: "text-right",
 };
 
 function renderCodeBlock(raw: string, keyBase: number): ReactNode {
@@ -304,13 +397,56 @@ function renderCodeBlock(raw: string, keyBase: number): ReactNode {
   );
 }
 
+function renderTable(
+  headers: string[],
+  alignments: Alignment[],
+  rows: string[][],
+  keyBase: number,
+): ReactNode {
+  // Pad alignments to match header count
+  const aligns = headers.map((_, i) => alignments[i] ?? "left");
+
+  return (
+    <div key={`tbl-${keyBase}`} className="my-2 overflow-x-auto">
+      <table className="w-full border-collapse text-[13px]">
+        <thead>
+          <tr className="border-b border-border bg-muted/30">
+            {headers.map((h, ci) => (
+              <th
+                key={ci}
+                className={`${alignClass[aligns[ci]]} px-3 py-1.5 font-semibold text-foreground`}
+              >
+                {renderInline(h)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} className="border-b border-border/40 last:border-b-0">
+              {row.map((cell, ci) => (
+                <td
+                  key={ci}
+                  className={`${alignClass[aligns[ci]]} px-3 py-1.5 text-foreground`}
+                >
+                  {renderInline(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Main render function ──────────────────────────────────────────────
 
 /**
  * Render markdown text as React nodes.
  *
  * Handles: headings, fenced code blocks (with language tag), bullet lists,
- * numbered lists, blockquotes, horizontal rules, paragraphs,
+ * numbered lists, blockquotes, horizontal rules, paragraphs, tables,
  * **bold**, *italic*, `code`, and [links](url).
  */
 export function renderMarkdown(text: string): ReactNode[] {
@@ -387,6 +523,17 @@ export function renderMarkdown(text: string): ReactNode[] {
           <p key={`p-${i}`} className="my-1">
             {renderInline(item.content ?? "")}
           </p>,
+        );
+        break;
+
+      case "table":
+        nodes.push(
+          renderTable(
+            item.headers ?? [],
+            item.alignments ?? [],
+            item.rows ?? [],
+            i,
+          ),
         );
         break;
     }
