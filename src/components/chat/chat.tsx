@@ -607,6 +607,8 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           sessionTitle,
           "Agent finished responding",
           isSessionActive,
+          projectId,
+          sessionId,
         );
       }
     }
@@ -632,6 +634,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     messages,
     isThinking,
     isSessionActive,
+    projectId,
     sessionId,
     setStatus,
     sessionTitle,

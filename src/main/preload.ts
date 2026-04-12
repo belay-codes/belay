@@ -16,8 +16,32 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("session:deleteMessages", sessionId),
 
   // Notifications
-  notificationSend: (title: string, body: string, sessionVisible: boolean) =>
-    ipcRenderer.send("notification:send", title, body, sessionVisible),
+  notificationSend: (
+    title: string,
+    body: string,
+    sessionVisible: boolean,
+    projectId: string,
+    sessionId: string,
+  ) =>
+    ipcRenderer.send(
+      "notification:send",
+      title,
+      body,
+      sessionVisible,
+      projectId,
+      sessionId,
+    ),
+
+  onNotificationClick: (
+    callback: (data: { projectId: string; sessionId: string }) => void,
+  ) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { projectId: string; sessionId: string },
+    ) => callback(data);
+    ipcRenderer.on("notification:click", handler);
+    return () => ipcRenderer.removeListener("notification:click", handler);
+  },
 
   // Window controls
   minimize: () => ipcRenderer.send("window:minimize"),

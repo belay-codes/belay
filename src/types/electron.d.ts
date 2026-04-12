@@ -30,7 +30,12 @@ export interface ElectronAPI {
     title: string,
     body: string,
     sessionVisible: boolean,
+    projectId: string,
+    sessionId: string,
   ) => void;
+  onNotificationClick: (
+    callback: (data: { projectId: string; sessionId: string }) => void,
+  ) => () => void;
 
   // Window controls
   minimize: () => void;

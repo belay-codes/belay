@@ -100,14 +100,34 @@ ipcMain.handle("window:isMaximized", () => {
 
 ipcMain.on(
   "notification:send",
-  (_event, title: string, body: string, sessionVisible: boolean) => {
+  (
+    _event,
+    title: string,
+    body: string,
+    sessionVisible: boolean,
+    projectId: string,
+    sessionId: string,
+  ) => {
     // Only notify if the user can't see the response:
     // - session is not the active/visible one, OR
     // - the window is minimized or unfocused
     const windowObscured =
       !mainWindow || mainWindow.isMinimized() || !mainWindow.isFocused();
     if (!sessionVisible || windowObscured) {
-      new Notification({ title, body, icon: iconPath }).show();
+      const notification = new Notification({ title, body, icon: iconPath });
+      notification.on("click", () => {
+        // Restore and focus the window
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.focus();
+        }
+        // Tell the renderer to navigate to the relevant session
+        mainWindow?.webContents.send("notification:click", {
+          projectId,
+          sessionId,
+        });
+      });
+      notification.show();
     }
   },
 );

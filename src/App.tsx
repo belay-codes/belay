@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { TitleBar } from "@/components/title-bar";
 import { Chat } from "@/components/chat/chat";
 import { ProjectWelcome } from "@/components/project/project-welcome";
@@ -7,7 +8,18 @@ import { MessageStoreProvider } from "@/stores/message-store";
 import { SessionStatusStoreProvider } from "@/stores/session-status-store";
 
 function AppLayout() {
-  const { openProjects, activeProjectId } = useProjectStore();
+  const { openProjects, activeProjectId, setActiveProject, setActiveSession } =
+    useProjectStore();
+
+  // ── Notification click handler: navigate to the relevant session ──
+  useEffect(() => {
+    return window.electronAPI?.onNotificationClick(
+      ({ projectId, sessionId }) => {
+        setActiveProject(projectId);
+        setActiveSession(projectId, sessionId);
+      },
+    );
+  }, [setActiveProject, setActiveSession]);
 
   // ── Welcome page (no projects open) ────────────────────────────────
   if (openProjects.length === 0) {
