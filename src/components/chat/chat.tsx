@@ -606,9 +606,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         setStatus(sessionId, "unseen");
         if (!notifiedRef.current) {
           notifiedRef.current = true;
-          new Notification(`${sessionTitle}`, {
-            body: "Agent finished responding",
-          });
+          window.electronAPI?.notificationSend(
+            sessionTitle,
+            "Agent finished responding",
+          );
         }
       } else {
         // Last message is a user message or still streaming — not unseen yet

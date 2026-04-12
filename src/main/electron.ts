@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
 import * as path from "node:path";
 import { connectionManager } from "./acp/connection-manager.js";
 import {
@@ -90,6 +90,15 @@ ipcMain.on("window:close", () => {
 
 ipcMain.handle("window:isMaximized", () => {
   return mainWindow?.isMaximized() ?? false;
+});
+
+// ── Notifications ─────────────────────────────────────────────────────
+
+ipcMain.on("notification:send", (_event, title: string, body: string) => {
+  const notifyIcon = !app.isPackaged
+    ? path.join(__dirname, "..", "..", "public", "Belay.png")
+    : path.join(__dirname, "..", "renderer", "Belay.png");
+  new Notification({ title, body, icon: notifyIcon }).show();
 });
 
 // ── IPC handlers for project operations ──────────────────────────────
