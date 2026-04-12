@@ -6,6 +6,8 @@ export interface Project {
   sessions: ChatSession[];
   activeSessionId: string | null;
   groups: SessionGroup[];
+  /** Ordered IDs of groups and ungrouped sessions for sidebar rendering. */
+  layout: string[];
 }
 
 export interface ChatSession {

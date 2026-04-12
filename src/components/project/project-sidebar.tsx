@@ -40,13 +40,13 @@ function persistExpanded(set: Set<string>): void {
 // ── Drag and drop types ────────────────────────────────────────────
 
 interface DragInfo {
-  kind: "project" | "session";
+  kind: "project" | "session" | "group";
   id: string;
   projectId?: string;
 }
 
 interface DropIndicator {
-  kind: "project" | "session" | "group" | "ungroup";
+  kind: "project" | "session" | "group" | "ungroup" | "layout";
   targetId: string;
   position: "before" | "after";
 }
@@ -123,7 +123,6 @@ export function ProjectSidebar() {
     setActiveSession,
     pathToId,
     reorderProjects,
-    reorderSessions,
     createGroup,
     deleteGroup,
     renameGroup,
@@ -132,6 +131,8 @@ export function ProjectSidebar() {
     removeSessionFromGroup,
     toggleGroupCollapsed,
     reorderGroupSessions,
+    reorderLayout,
+    ungroupSessionAtPosition,
   } = useProjectStore();
 
   // ── Context menu helpers ─────────────────────────────────────────
@@ -355,68 +356,124 @@ export function ProjectSidebar() {
 
   function handleSessionListDragStart(e: React.DragEvent, projectId: string) {
     e.stopPropagation();
-    const el = (e.target as Element).closest("[data-session-id]");
-    if (!el) return;
-    const id = (el as HTMLElement).dataset.sessionId!;
-    e.dataTransfer.effectAllowed = "move";
-    dragInfoRef.current = { kind: "session", id, projectId };
-    setDrop(null);
+    const sessionEl = (e.target as Element).closest("[data-session-id]");
+    if (sessionEl) {
+      const id = (sessionEl as HTMLElement).dataset.sessionId!;
+      e.dataTransfer.effectAllowed = "move";
+      dragInfoRef.current = { kind: "session", id, projectId };
+      setDrop(null);
+      return;
+    }
+    const groupEl = (e.target as Element).closest("[data-group-id]");
+    if (groupEl) {
+      const id = (groupEl as HTMLElement).dataset.groupId!;
+      e.dataTransfer.effectAllowed = "move";
+      dragInfoRef.current = { kind: "group", id, projectId };
+      setDrop(null);
+    }
   }
 
   function handleSessionListDragOver(e: React.DragEvent, projectId: string) {
     e.stopPropagation();
     const d = dragInfoRef.current;
-    if (!d || d.kind !== "session" || d.projectId !== projectId) return;
-    const el = (e.target as Element).closest("[data-session-id]");
-    if (!el) {
-      // Check if we're over a group header — drop session into that group
-      const groupEl = (e.target as Element).closest("[data-group-id]");
-      if (groupEl) {
-        const groupId = (groupEl as HTMLElement).dataset.groupId!;
-        const project = openProjects.find((p) => p.id === projectId);
-        const group = project?.groups.find((g) => g.id === groupId);
-        if (group && !group.sessionIds.includes(d.id)) {
+    if (
+      !d ||
+      (d.kind !== "session" && d.kind !== "group") ||
+      d.projectId !== projectId
+    )
+      return;
+    const project = openProjects.find((p) => p.id === projectId);
+    if (!project) return;
+
+    const groupedSessionIds = new Set(
+      project.groups.flatMap((g) => g.sessionIds),
+    );
+
+    // ── Group drag → reorder within layout ──
+    if (d.kind === "group") {
+      // Check for ungrouped session (layout target)
+      const sessionEl = (e.target as Element).closest("[data-session-id]");
+      if (sessionEl) {
+        const targetId = (sessionEl as HTMLElement).dataset.sessionId!;
+        if (!groupedSessionIds.has(targetId) && targetId !== d.id) {
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
-          setDrop({ kind: "group", targetId: groupId, position: "after" });
+          const rect = sessionEl.getBoundingClientRect();
+          setDrop({
+            kind: "layout",
+            targetId,
+            position:
+              e.clientY < rect.top + rect.height / 2 ? "before" : "after",
+          });
         }
         return;
       }
-      // Dragging over empty space — target the ungrouped area
-      const project = openProjects.find((p) => p.id === projectId);
-      if (project) {
-        const groupedIds = new Set(project.groups.flatMap((g) => g.sessionIds));
-        const ungrouped = project.sessions.filter((s) => !groupedIds.has(s.id));
-        if (ungrouped.length > 0) {
-          const last = ungrouped[ungrouped.length - 1];
-          if (last.id !== d.id) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
-            setDrop({
-              kind: "session",
-              targetId: last.id,
-              position: "after",
-            });
-          }
-        } else if (groupedIds.has(d.id)) {
-          // All sessions are grouped — allow drop to ungroup
+      // Check for group header (layout target)
+      const groupEl = (e.target as Element).closest("[data-group-id]");
+      if (groupEl) {
+        const targetId = (groupEl as HTMLElement).dataset.groupId!;
+        if (targetId !== d.id) {
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
-          setDrop({ kind: "ungroup", targetId: projectId, position: "after" });
+          const rect = groupEl.getBoundingClientRect();
+          setDrop({
+            kind: "layout",
+            targetId,
+            position:
+              e.clientY < rect.top + rect.height / 2 ? "before" : "after",
+          });
         }
+        return;
+      }
+      // Empty space → snap to last layout item
+      const lastId = project.layout[project.layout.length - 1];
+      if (lastId && lastId !== d.id) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setDrop({ kind: "layout", targetId: lastId, position: "after" });
       }
       return;
     }
-    const targetId = (el as HTMLElement).dataset.sessionId!;
-    if (targetId === d.id) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const rect = el.getBoundingClientRect();
-    setDrop({
-      kind: "session",
-      targetId,
-      position: e.clientY < rect.top + rect.height / 2 ? "before" : "after",
-    });
+
+    // ── Session drag ──
+    const sessionEl = (e.target as Element).closest("[data-session-id]");
+    if (sessionEl) {
+      const targetId = (sessionEl as HTMLElement).dataset.sessionId!;
+      if (targetId === d.id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const rect = sessionEl.getBoundingClientRect();
+      const pos = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+      if (groupedSessionIds.has(targetId)) {
+        // Grouped session → reorder within group
+        setDrop({ kind: "session", targetId, position: pos });
+      } else {
+        // Ungrouped session → layout reorder
+        setDrop({ kind: "layout", targetId, position: pos });
+      }
+      return;
+    }
+
+    // Group header → add session to group
+    const groupEl = (e.target as Element).closest("[data-group-id]");
+    if (groupEl) {
+      const groupId = (groupEl as HTMLElement).dataset.groupId!;
+      const group = project.groups.find((g) => g.id === groupId);
+      if (group && !group.sessionIds.includes(d.id)) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setDrop({ kind: "group", targetId: groupId, position: "after" });
+      }
+      return;
+    }
+
+    // Empty space → snap to last layout item
+    const lastId = project.layout[project.layout.length - 1];
+    if (lastId && lastId !== d.id) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDrop({ kind: "layout", targetId: lastId, position: "after" });
+    }
   }
 
   function handleSessionListDrop(e: React.DragEvent, projectId: string) {
@@ -424,19 +481,59 @@ export function ProjectSidebar() {
     e.stopPropagation();
     const d = dragInfoRef.current;
     const t = dropIndicatorRef.current;
-    if (!d || d.kind !== "session" || d.projectId !== projectId || !t) return;
+    if (
+      !d ||
+      (d.kind !== "session" && d.kind !== "group") ||
+      d.projectId !== projectId ||
+      !t
+    )
+      return;
 
     const project = openProjects.find((p) => p.id === projectId);
     if (!project) return;
 
-    // Drop onto empty space (all sessions grouped) → ungroup
-    if (t.kind === "ungroup") {
-      const currentGroup = project.groups.find((g) =>
-        g.sessionIds.includes(d.id),
-      );
-      if (currentGroup) {
-        removeSessionFromGroup(projectId, currentGroup.id, d.id);
+    // ── Layout reorder (groups and ungrouped sessions) ──
+    if (t.kind === "layout") {
+      const layout = project.layout.slice();
+
+      if (d.kind === "group") {
+        const idx = layout.indexOf(d.id);
+        if (idx !== -1) layout.splice(idx, 1);
+        const targetIdx = layout.indexOf(t.targetId);
+        if (targetIdx !== -1) {
+          layout.splice(
+            t.position === "after" ? targetIdx + 1 : targetIdx,
+            0,
+            d.id,
+          );
+          reorderLayout(projectId, layout);
+        }
+      } else if (d.kind === "session") {
+        const currentGroup = project.groups.find((g) =>
+          g.sessionIds.includes(d.id),
+        );
+        const cleaned = layout.filter((id) => id !== d.id);
+        const targetIdx = cleaned.indexOf(t.targetId);
+        if (targetIdx !== -1) {
+          cleaned.splice(
+            t.position === "after" ? targetIdx + 1 : targetIdx,
+            0,
+            d.id,
+          );
+          if (currentGroup) {
+            ungroupSessionAtPosition(projectId, d.id, cleaned);
+          } else {
+            reorderLayout(projectId, cleaned);
+          }
+        }
       }
+      dragInfoRef.current = null;
+      setDrop(null);
+      return;
+    }
+
+    // Only session drags past this point
+    if (d.kind !== "session") {
       dragInfoRef.current = null;
       setDrop(null);
       return;
@@ -450,40 +547,22 @@ export function ProjectSidebar() {
       return;
     }
 
-    // Drop between sessions — group-aware reordering
-    const targetGroup = project.groups.find((g) =>
-      g.sessionIds.includes(t.targetId),
-    );
-
-    if (targetGroup) {
-      // Target is inside a group → insert into that group at position
-      const ids = targetGroup.sessionIds.filter((id) => id !== d.id);
-      const idx = ids.indexOf(t.targetId);
-      if (idx === -1) {
-        dragInfoRef.current = null;
-        setDrop(null);
-        return;
-      }
-      ids.splice(t.position === "after" ? idx + 1 : idx, 0, d.id);
-      reorderGroupSessions(projectId, targetGroup.id, ids);
-    } else {
-      // Target is ungrouped → remove from any current group + reorder flat list
-      const currentGroup = project.groups.find((g) =>
-        g.sessionIds.includes(d.id),
+    // Drop between grouped sessions → reorder within group
+    if (t.kind === "session") {
+      const targetGroup = project.groups.find((g) =>
+        g.sessionIds.includes(t.targetId),
       );
-      if (currentGroup) {
-        removeSessionFromGroup(projectId, currentGroup.id, d.id);
+      if (targetGroup) {
+        const ids = targetGroup.sessionIds.filter((id) => id !== d.id);
+        const idx = ids.indexOf(t.targetId);
+        if (idx !== -1) {
+          ids.splice(t.position === "after" ? idx + 1 : idx, 0, d.id);
+          reorderGroupSessions(projectId, targetGroup.id, ids);
+        }
       }
-      const ids = project.sessions.map((s) => s.id);
-      const without = ids.filter((id) => id !== d.id);
-      const idx = without.indexOf(t.targetId);
-      if (idx === -1) {
-        dragInfoRef.current = null;
-        setDrop(null);
-        return;
-      }
-      without.splice(t.position === "after" ? idx + 1 : idx, 0, d.id);
-      reorderSessions(projectId, without);
+      dragInfoRef.current = null;
+      setDrop(null);
+      return;
     }
 
     dragInfoRef.current = null;
@@ -807,12 +886,8 @@ export function ProjectSidebar() {
                 dropIndicator.targetId === project.id &&
                 dropIndicator.position === "after";
 
-              // Compute grouped / ungrouped sessions
               const groupedSessionIds = new Set(
                 project.groups.flatMap((g) => g.sessionIds),
-              );
-              const ungroupedSessions = project.sessions.filter(
-                (s) => !groupedSessionIds.has(s.id),
               );
 
               return (
@@ -921,92 +996,196 @@ export function ProjectSidebar() {
                       onDrop={(e) => handleSessionListDrop(e, project.id)}
                       onDragEnd={handleSessionListDragEnd}
                     >
-                      {/* ── Groups ── */}
-                      {project.groups.map((group) => {
-                        // Resolve sessions that still exist in this group
-                        const groupSessions = group.sessionIds
-                          .map((sid) =>
-                            project.sessions.find((s) => s.id === sid),
-                          )
-                          .filter(
-                            (s): s is NonNullable<typeof s> => s !== undefined,
-                          );
+                      {/* ── Layout items (groups and ungrouped sessions in order) ── */}
+                      {project.layout.map((id) => {
+                        // Check if this layout item is a group
+                        const group = project.groups.find((g) => g.id === id);
+                        if (group) {
+                          const groupSessions = group.sessionIds
+                            .map((sid) =>
+                              project.sessions.find((s) => s.id === sid),
+                            )
+                            .filter(
+                              (s): s is NonNullable<typeof s> =>
+                                s !== undefined,
+                            );
 
-                        const isGroupDropTarget =
-                          dropIndicator?.kind === "group" &&
-                          dropIndicator.targetId === group.id;
+                          const isGroupDropTarget =
+                            dropIndicator?.kind === "group" &&
+                            dropIndicator.targetId === group.id;
+                          const isGroupDragging =
+                            dragInfoRef.current?.kind === "group" &&
+                            dragInfoRef.current.id === group.id;
+                          const isLayoutDropBefore =
+                            dropIndicator?.kind === "layout" &&
+                            dropIndicator.targetId === group.id &&
+                            dropIndicator.position === "before";
+                          const isLayoutDropAfter =
+                            dropIndicator?.kind === "layout" &&
+                            dropIndicator.targetId === group.id &&
+                            dropIndicator.position === "after";
 
-                        return (
-                          <div key={group.id} className="mt-0.5">
-                            {/* Group header (also a drop target for sessions) */}
-                            <button
-                              type="button"
-                              data-group-id={group.id}
-                              onClick={() =>
-                                toggleGroupCollapsed(project.id, group.id)
+                          return (
+                            <div
+                              key={group.id}
+                              className="mt-0.5"
+                              style={
+                                isGroupDragging ? { opacity: 0.4 } : undefined
                               }
-                              onContextMenu={(e) =>
-                                handleContextMenu(e, {
-                                  kind: "group",
-                                  projectId: project.id,
-                                  groupId: group.id,
-                                })
+                            >
+                              <button
+                                type="button"
+                                data-group-id={group.id}
+                                draggable
+                                onClick={() =>
+                                  toggleGroupCollapsed(project.id, group.id)
+                                }
+                                onContextMenu={(e) =>
+                                  handleContextMenu(e, {
+                                    kind: "group",
+                                    projectId: project.id,
+                                    groupId: group.id,
+                                  })
+                                }
+                                className={[
+                                  "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors cursor-grab active:cursor-grabbing",
+                                  isGroupDropTarget
+                                    ? "ring-2 ring-primary/60 bg-primary/10"
+                                    : isLayoutDropBefore
+                                      ? "border-t-2 border-primary rounded-t-none"
+                                      : isLayoutDropAfter
+                                        ? "border-b-2 border-primary rounded-b-none"
+                                        : "hover:bg-muted/40",
+                                ].join(" ")}
+                              >
+                                {group.collapsed ? (
+                                  <ChevronRight className="size-2.5 shrink-0 text-muted-foreground/60" />
+                                ) : (
+                                  <ChevronDown className="size-2.5 shrink-0 text-muted-foreground/60" />
+                                )}
+                                <span
+                                  className="size-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: group.color }}
+                                />
+                                <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight text-muted-foreground">
+                                  {group.name}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+                                  {groupSessions.length}
+                                </span>
+                              </button>
+
+                              {/* Group sessions (visible when not collapsed) */}
+                              {!group.collapsed &&
+                                groupSessions.map((session) =>
+                                  renderSession(
+                                    session,
+                                    {
+                                      id: project.id,
+                                      activeSessionId: project.activeSessionId,
+                                      isActive,
+                                    },
+                                    /* extraIndent */ true,
+                                  ),
+                                )}
+                            </div>
+                          );
+                        }
+
+                        // Check if this layout item is an ungrouped session
+                        const session = project.sessions.find(
+                          (s) => s.id === id,
+                        );
+                        if (session && !groupedSessionIds.has(id)) {
+                          const isSessionActive =
+                            isActive && session.id === project.activeSessionId;
+                          const isSessionDragging =
+                            dragInfoRef.current?.kind === "session" &&
+                            dragInfoRef.current.id === session.id;
+                          const isLayoutDropBefore =
+                            dropIndicator?.kind === "layout" &&
+                            dropIndicator.targetId === session.id &&
+                            dropIndicator.position === "before";
+                          const isLayoutDropAfter =
+                            dropIndicator?.kind === "layout" &&
+                            dropIndicator.targetId === session.id &&
+                            dropIndicator.position === "after";
+
+                          return (
+                            <div
+                              key={session.id}
+                              style={
+                                isSessionDragging ? { opacity: 0.4 } : undefined
                               }
                               className={[
-                                "flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors",
-                                isGroupDropTarget
-                                  ? "ring-2 ring-primary/60 bg-primary/10"
-                                  : "hover:bg-muted/40",
+                                isLayoutDropBefore
+                                  ? "border-t-2 border-primary"
+                                  : "",
+                                isLayoutDropAfter
+                                  ? "border-b-2 border-primary"
+                                  : "",
                               ].join(" ")}
                             >
-                              {group.collapsed ? (
-                                <ChevronRight className="size-2.5 shrink-0 text-muted-foreground/60" />
-                              ) : (
-                                <ChevronDown className="size-2.5 shrink-0 text-muted-foreground/60" />
-                              )}
-                              <span
-                                className="size-2 shrink-0 rounded-full"
-                                style={{ backgroundColor: group.color }}
-                              />
-                              <span className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight text-muted-foreground">
-                                {group.name}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground/40 tabular-nums">
-                                {groupSessions.length}
-                              </span>
-                            </button>
+                              <button
+                                type="button"
+                                data-session-id={session.id}
+                                draggable
+                                onClick={() =>
+                                  setActiveSession(project.id, session.id)
+                                }
+                                onContextMenu={(e) =>
+                                  handleContextMenu(e, {
+                                    kind: "session",
+                                    projectId: project.id,
+                                    sessionId: session.id,
+                                  })
+                                }
+                                className={[
+                                  "group/session flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors cursor-grab active:cursor-grabbing",
+                                  isSessionActive
+                                    ? "bg-muted/70 text-foreground"
+                                    : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
+                                ].join(" ")}
+                              >
+                                <MessageSquare
+                                  className={[
+                                    "size-3 shrink-0",
+                                    isSessionActive
+                                      ? "text-primary"
+                                      : "text-muted-foreground/50",
+                                  ].join(" ")}
+                                />
 
-                            {/* Group sessions (visible when not collapsed) */}
-                            {!group.collapsed &&
-                              groupSessions.map((session) =>
-                                renderSession(
-                                  session,
-                                  {
-                                    id: project.id,
-                                    activeSessionId: project.activeSessionId,
-                                    isActive,
-                                  },
-                                  /* extraIndent */ true,
-                                ),
-                              )}
-                          </div>
-                        );
+                                <span className="min-w-0 flex-1 truncate text-[12px] leading-tight">
+                                  {session.title}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) =>
+                                    handleCloseSession(
+                                      e,
+                                      project.id,
+                                      session.id,
+                                    )
+                                  }
+                                  className={[
+                                    "flex size-4 shrink-0 items-center justify-center rounded transition-colors",
+                                    isSessionActive
+                                      ? "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
+                                      : "text-transparent group-hover/session:text-muted-foreground hover:!bg-muted-foreground/10 hover:!text-foreground",
+                                  ].join(" ")}
+                                  aria-label={`Close ${session.title}`}
+                                >
+                                  <X className="size-2.5" />
+                                </button>
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return null;
                       })}
-
-                      {/* ── Ungrouped sessions ── */}
-                      {ungroupedSessions.map((session) =>
-                        renderSession(session, {
-                          id: project.id,
-                          activeSessionId: project.activeSessionId,
-                          isActive,
-                        }),
-                      )}
-
-                      {/* Drop-to-ungroup indicator (shows when all sessions are grouped) */}
-                      {dropIndicator?.kind === "ungroup" &&
-                        dropIndicator.targetId === project.id && (
-                          <div className="h-0.5 rounded-full bg-primary -ml-2 mb-0.5" />
-                        )}
 
                       {/* Add chat button inside expanded section */}
                       <button

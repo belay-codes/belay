@@ -84,6 +84,13 @@ type ProjectAction =
       projectId: string;
       groupId: string;
       sessionIds: string[];
+    }
+  | { type: "REORDER_LAYOUT"; projectId: string; layout: string[] }
+  | {
+      type: "UNGROUP_SESSION_AT_POSITION";
+      projectId: string;
+      sessionId: string;
+      layout: string[];
     };
 
 // ── Context value ──────────────────────────────────────────────────────
@@ -130,6 +137,12 @@ interface ProjectStoreContextValue extends ProjectState {
     groupId: string,
     sessionIds: string[],
   ) => void;
+  reorderLayout: (projectId: string, layout: string[]) => void;
+  ungroupSessionAtPosition: (
+    projectId: string,
+    sessionId: string,
+    layout: string[],
+  ) => void;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -163,11 +176,12 @@ interface SerializedGroup extends Omit<SessionGroup, "sessionIds"> {
 
 interface SerializedProject extends Omit<
   Project,
-  "lastOpened" | "sessions" | "groups"
+  "lastOpened" | "sessions" | "groups" | "layout"
 > {
   lastOpened: string;
   sessions: Array<Omit<ChatSession, "createdAt"> & { createdAt: string }>;
   groups: SerializedGroup[];
+  layout: string[];
 }
 
 function ensureSessions(project: SerializedProject): Project {
@@ -186,13 +200,26 @@ function ensureSessions(project: SerializedProject): Project {
     ...g,
     sessionIds: g.sessionIds ?? [],
   }));
+  // Backward compat: compute layout from groups + ungrouped sessions if missing
+  const layout = project.layout ?? computeLayout(groups, sessions);
   return {
     ...project,
     lastOpened: new Date(project.lastOpened),
     sessions,
     activeSessionId: project.activeSessionId ?? sessions[0].id ?? null,
     groups,
+    layout,
   };
+}
+
+/** Derive a layout from existing groups and sessions (migration helper). */
+function computeLayout(
+  groups: SessionGroup[],
+  sessions: ChatSession[],
+): string[] {
+  const groupedIds = new Set(groups.flatMap((g) => g.sessionIds));
+  const ungrouped = sessions.filter((s) => !groupedIds.has(s.id));
+  return [...groups.map((g) => g.id), ...ungrouped.map((s) => s.id)];
 }
 
 function loadState(): ProjectState {
@@ -259,6 +286,7 @@ function projectReducer(
         sessions: [defaultSession],
         activeSessionId: defaultSession.id,
         groups: [],
+        layout: [defaultSession.id],
       };
 
       return {
@@ -310,6 +338,7 @@ function projectReducer(
             ...p,
             sessions: [...p.sessions, action.session],
             activeSessionId: action.session.id,
+            layout: [...p.layout, action.session.id],
           }),
         ),
       };
@@ -344,6 +373,7 @@ function projectReducer(
               sessions: remaining,
               activeSessionId: newActiveSessionId,
               groups: updatedGroups,
+              layout: p.layout.filter((id) => id !== action.sessionId),
             };
           },
         ),
@@ -455,6 +485,11 @@ function projectReducer(
             return {
               ...p,
               groups: [...cleanedGroups, group],
+              // Add group to layout; remove initial sessions from layout since they're now grouped
+              layout: [
+                ...p.layout.filter((id) => !initialIds.has(id)),
+                group.id,
+              ],
             };
           },
         ),
@@ -467,10 +502,19 @@ function projectReducer(
         openProjects: updateProject(
           state.openProjects,
           action.projectId,
-          (p) => ({
-            ...p,
-            groups: p.groups.filter((g) => g.id !== action.groupId),
-          }),
+          (p) => {
+            const group = p.groups.find((g) => g.id === action.groupId);
+            const groupSessionIds = group?.sessionIds ?? [];
+            return {
+              ...p,
+              groups: p.groups.filter((g) => g.id !== action.groupId),
+              // Remove group from layout, add its sessions back
+              layout: [
+                ...p.layout.filter((id) => id !== action.groupId),
+                ...groupSessionIds,
+              ],
+            };
+          },
         ),
       };
     }
@@ -532,6 +576,8 @@ function projectReducer(
                 sessionIds: [...g.sessionIds, action.sessionId],
               };
             }),
+            // Remove session from layout (it's now in a group)
+            layout: p.layout.filter((id) => id !== action.sessionId),
           }),
         ),
       };
@@ -555,6 +601,10 @@ function projectReducer(
                   }
                 : g,
             ),
+            // Add session back to layout at the end
+            layout: p.layout.includes(action.sessionId)
+              ? p.layout
+              : [...p.layout, action.sessionId],
           }),
         ),
       };
@@ -603,19 +653,63 @@ function projectReducer(
         openProjects: updateProject(
           state.openProjects,
           action.projectId,
+          (p) => {
+            const targetGroup = p.groups.find((g) => g.id === action.groupId);
+            const oldIds = new Set(targetGroup?.sessionIds ?? []);
+            // Sessions that are new to the target group weren't in it before
+            const newToGroupSet = new Set(
+              action.sessionIds.filter((id) => !oldIds.has(id)),
+            );
+            return {
+              ...p,
+              groups: p.groups.map((g) => {
+                if (g.id === action.groupId) {
+                  return { ...g, sessionIds: action.sessionIds };
+                }
+                // Remove any sessions that moved into the target group
+                const movedSet = new Set(action.sessionIds);
+                return {
+                  ...g,
+                  sessionIds: g.sessionIds.filter((sid) => !movedSet.has(sid)),
+                };
+              }),
+              // Remove sessions that just joined the group from layout
+              layout: p.layout.filter((id) => !newToGroupSet.has(id)),
+            };
+          },
+        ),
+      };
+    }
+
+    case "REORDER_LAYOUT": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
           (p) => ({
             ...p,
-            groups: p.groups.map((g) => {
-              if (g.id === action.groupId) {
-                return { ...g, sessionIds: action.sessionIds };
-              }
-              // Remove any sessions that moved into the target group
-              const movedSet = new Set(action.sessionIds);
-              return {
-                ...g,
-                sessionIds: g.sessionIds.filter((sid) => !movedSet.has(sid)),
-              };
-            }),
+            layout: action.layout,
+          }),
+        ),
+      };
+    }
+
+    case "UNGROUP_SESSION_AT_POSITION": {
+      return {
+        ...state,
+        openProjects: updateProject(
+          state.openProjects,
+          action.projectId,
+          (p) => ({
+            ...p,
+            groups: p.groups.map((g) => ({
+              ...g,
+              sessionIds: g.sessionIds.filter(
+                (sid) => sid !== action.sessionId,
+              ),
+            })),
+            layout: action.layout,
           }),
         ),
       };
@@ -654,6 +748,7 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         sessions: [],
         activeSessionId: null,
         groups: [],
+        layout: [],
       },
     });
   }, []);
@@ -834,6 +929,22 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const reorderLayout = useCallback((projectId: string, layout: string[]) => {
+    dispatch({ type: "REORDER_LAYOUT", projectId, layout });
+  }, []);
+
+  const ungroupSessionAtPosition = useCallback(
+    (projectId: string, sessionId: string, layout: string[]) => {
+      dispatch({
+        type: "UNGROUP_SESSION_AT_POSITION",
+        projectId,
+        sessionId,
+        layout,
+      });
+    },
+    [],
+  );
+
   return (
     <ProjectStoreContext.Provider
       value={{
@@ -858,6 +969,8 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         toggleGroupCollapsed,
         reorderGroups,
         reorderGroupSessions,
+        reorderLayout,
+        ungroupSessionAtPosition,
       }}
     >
       {children}
