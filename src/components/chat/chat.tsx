@@ -171,10 +171,11 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     openProjects,
     addSession,
     setActiveSession,
+    activeProjectId,
   } = useProjectStore();
   const activeProject = openProjects.find((p) => p.id === projectId);
   const isSessionActive =
-    activeProject?.id === projectId &&
+    activeProjectId === projectId &&
     activeProject?.activeSessionId === sessionId;
   const agentId =
     activeProject?.sessions.find((s) => s.id === sessionId)?.agentId ?? null;
