@@ -149,7 +149,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   const { messages, setMessages, saveMessages } = useSessionMessages(sessionId);
 
   const [isThinking, setIsThinking] = useState(false);
-  const [editText, setEditText] = useState<string | undefined>(undefined);
+  const [editingMessageId, setEditingMessageId] = useState<string | undefined>(
+    undefined,
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Agent selection ───────────────────────────────────────────────
@@ -775,25 +777,30 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   }, [acpSessionId, agentId, cancelPrompt, setMessages, saveMessages]);
 
   // ── Edit / resend a previous user message ────────────────────────
-  const clearEditText = useCallback(() => setEditText(undefined), []);
+  const handleStartEdit = useCallback((messageId: string) => {
+    setEditingMessageId(messageId);
+  }, []);
 
-  const handleEditMessage = useCallback(
-    (messageId: string) => {
+  const handleEditSubmit = useCallback(
+    (messageId: string, newContent: string) => {
       const msgIndex = messages.findIndex((m) => m.id === messageId);
       if (msgIndex < 0) return;
 
-      const message = messages[msgIndex];
-      const textBlock = message.blocks.find((b) => b.type === "text");
-      const content = textBlock?.type === "text" ? textBlock.content : "";
-
       // Truncate messages to before this one (removes the message and all after it)
       setMessages(messages.slice(0, msgIndex));
-      setEditText(content);
+      setEditingMessageId(undefined);
       // Persist the truncated history
       saveMessages();
+
+      // Send the edited content as a new message
+      handleSend(newContent);
     },
-    [messages, setMessages, saveMessages],
+    [messages, setMessages, saveMessages, handleSend],
   );
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(undefined);
+  }, []);
 
   // ── Agent selector UI ────────────────────────────────────────────
   const selectedHarness = harnesses.find((h) => h.agentId === agentId);
@@ -962,8 +969,6 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
               slashCommands={slashCommands}
               modes={availableModes}
               onModeSelect={handleModeSelect}
-              editText={editText}
-              onEditTextConsumed={clearEditText}
             />
           </div>
         </div>
@@ -990,7 +995,12 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
               <MessageBubble
                 key={message.id}
                 message={message}
-                onEdit={message.role === "user" ? handleEditMessage : undefined}
+                isEditing={editingMessageId === message.id}
+                onEdit={message.role === "user" ? handleStartEdit : undefined}
+                onEditSubmit={
+                  message.role === "user" ? handleEditSubmit : undefined
+                }
+                onEditCancel={handleCancelEdit}
               />
             ))}
 
@@ -1035,8 +1045,6 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
             slashCommands={slashCommands}
             modes={availableModes}
             onModeSelect={handleModeSelect}
-            editText={editText}
-            onEditTextConsumed={clearEditText}
           />
         </div>
       </div>

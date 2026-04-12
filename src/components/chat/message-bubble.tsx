@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Pencil, Copy, Check } from "lucide-react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { Pencil, Copy, Check, X, ArrowUp } from "lucide-react";
 import { ThinkingBlock } from "./thinking-block";
 import { ToolCallDisplay } from "./tool-call-display";
 import { renderMarkdown } from "./markdown";
@@ -41,12 +41,50 @@ interface MessageBubbleProps {
   message: Message;
   /** Called when the user clicks "edit" on a user message. */
   onEdit?: (messageId: string) => void;
+  /** Whether this message is currently being edited inline. */
+  isEditing?: boolean;
+  /** Called when the user submits an inline edit (Enter or Send button). */
+  onEditSubmit?: (messageId: string, newContent: string) => void;
+  /** Called when the user cancels an inline edit (Escape or Cancel button). */
+  onEditCancel?: () => void;
 }
 
-export function MessageBubble({ message, onEdit }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  onEdit,
+  isEditing = false,
+  onEditSubmit,
+  onEditCancel,
+}: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [editDraft, setEditDraft] = useState("");
+  const [prevIsEditing, setPrevIsEditing] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // When entering edit mode, initialise the draft from the message content.
+  // React-recommended pattern: adjust state during render when a prop changes.
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  if (isEditing !== prevIsEditing) {
+    setPrevIsEditing(isEditing);
+    if (isEditing) {
+      const textBlock = message.blocks.find((b) => b.type === "text");
+      const content = textBlock?.type === "text" ? textBlock.content : "";
+      setEditDraft(content);
+    }
+  }
+
+  // Auto-focus & auto-resize when editing starts
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    el.selectionStart = el.selectionEnd = el.value.length;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [isEditing]);
 
   // ── Copy message text to clipboard ────────────────────────────────
   const handleCopy = useCallback(
@@ -66,8 +104,8 @@ export function MessageBubble({ message, onEdit }: MessageBubbleProps) {
     [message.blocks],
   );
 
-  // ── Edit handler ──────────────────────────────────────────────────
-  const handleEdit = useCallback(
+  // ── Edit handlers ─────────────────────────────────────────────────
+  const handleEditClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       onEdit?.(message.id);
@@ -75,12 +113,97 @@ export function MessageBubble({ message, onEdit }: MessageBubbleProps) {
     [message.id, onEdit],
   );
 
+  const handleEditKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        const trimmed = editDraft.trim();
+        if (trimmed) {
+          onEditSubmit?.(message.id, trimmed);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onEditCancel?.();
+      }
+    },
+    [editDraft, message.id, onEditSubmit, onEditCancel],
+  );
+
+  const handleEditChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setEditDraft(e.target.value);
+      // Auto-resize
+      const el = e.target;
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    },
+    [],
+  );
+
+  const handleSubmitClick = useCallback(() => {
+    const trimmed = editDraft.trim();
+    if (trimmed) {
+      onEditSubmit?.(message.id, trimmed);
+    }
+  }, [editDraft, message.id, onEditSubmit]);
+
+  const handleCancelClick = useCallback(() => {
+    onEditCancel?.();
+  }, [onEditCancel]);
+
   // ── User messages: terminal-style input with hover actions ──────
   if (isUser) {
     const textBlock = message.blocks.find((b) => b.type === "text");
     const content = textBlock?.type === "text" ? textBlock.content : "";
-    const showActions = isHovered && !message.isStreaming;
+    const showActions = isHovered && !message.isStreaming && !isEditing;
 
+    // ── Editing mode: textarea inside the bubble ─────────────────
+    if (isEditing) {
+      return (
+        <div
+          className="group/msg flex items-end justify-end gap-1.5"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+        >
+          {/* ── Bubble with textarea ──────────────────────────────── */}
+          <div className="max-w-[85%] rounded-lg rounded-br-sm bg-primary px-3 py-2 text-[14px] leading-relaxed text-primary-foreground">
+            <textarea
+              ref={textareaRef}
+              value={editDraft}
+              onChange={handleEditChange}
+              onKeyDown={handleEditKeyDown}
+              rows={1}
+              className="w-full resize-none rounded bg-transparent text-[14px] leading-relaxed text-primary-foreground placeholder:text-primary-foreground/50 focus:outline-none"
+              style={{ maxHeight: 200 }}
+            />
+            {/* ── Edit action buttons ─────────────────────────────── */}
+            <div className="mt-1 flex items-center justify-end gap-1">
+              <button
+                type="button"
+                onClick={handleCancelClick}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-primary-foreground/70 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground"
+                aria-label="Cancel edit"
+              >
+                <X className="size-3" />
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitClick}
+                disabled={!editDraft.trim()}
+                className="inline-flex items-center gap-1 rounded-md bg-primary-foreground/20 px-2 py-1 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary-foreground/30 disabled:opacity-40 disabled:hover:bg-primary-foreground/20"
+                aria-label="Send edited message"
+              >
+                <ArrowUp className="size-3" strokeWidth={2.5} />
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Normal (non-editing) user bubble ─────────────────────────
     return (
       <div
         className="group/msg flex items-end justify-end gap-1.5"
@@ -112,7 +235,7 @@ export function MessageBubble({ message, onEdit }: MessageBubbleProps) {
           {onEdit && (
             <button
               type="button"
-              onClick={handleEdit}
+              onClick={handleEditClick}
               className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Edit and resend"
             >
