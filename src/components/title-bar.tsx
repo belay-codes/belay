@@ -318,7 +318,11 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
                   ))}
 
                   {/* ── Create branch input ── */}
-                  <div className="flex items-center gap-1 border-t border-border/30 px-1 pt-1">
+                  <div
+                    className="flex items-center gap-1 border-t border-border/30 px-1 pt-1"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
                     <Plus className="size-3 shrink-0 text-muted-foreground/30" />
                     <input
                       type="text"
@@ -328,6 +332,7 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
                       disabled={creating}
                       className="min-w-0 flex-1 bg-transparent px-1 py-0.5 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:outline-none"
                       onKeyDown={(e) => {
+                        e.stopPropagation();
                         if (e.key === "Enter") handleCreateBranch();
                       }}
                     />
