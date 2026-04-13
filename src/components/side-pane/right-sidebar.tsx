@@ -28,6 +28,10 @@ export interface RightSidebarProps {
   isOpen: boolean;
   /** Callback to toggle the sidebar open/closed state. */
   onToggle: () => void;
+  /** Currently active tab. */
+  activeTab?: SidebarTab;
+  /** Callback when the active tab changes. */
+  onTabChange?: (tab: SidebarTab) => void;
   /** The project root path to explore. If undefined, no explorer is shown. */
   projectPath?: string;
   /** Project display name for the header. */
@@ -44,17 +48,24 @@ const COLLAPSED_WIDTH = 40;
 export function RightSidebar({
   isOpen,
   onToggle,
+  activeTab: controlledTab,
+  onTabChange,
   projectPath,
   projectName,
 }: RightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<SidebarTab>("explorer");
+  const [internalTab, setInternalTab] = useState<SidebarTab>("explorer");
+  const activeTab = controlledTab ?? internalTab;
 
   const handleTabClick = (tabId: SidebarTab) => {
     if (isOpen && activeTab === tabId) {
       // Clicking the active tab while open collapses the sidebar
       onToggle();
     } else {
-      setActiveTab(tabId);
+      if (onTabChange) {
+        onTabChange(tabId);
+      } else {
+        setInternalTab(tabId);
+      }
       if (!isOpen) {
         onToggle();
       }

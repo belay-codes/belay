@@ -32,6 +32,29 @@ function persistSidebarSessions(ids: Set<string>): void {
   }
 }
 
+const SIDEBAR_TAB_KEY = "belay:rightSidebar:sessionTabs";
+
+function loadSidebarTabs(): Map<string, string> {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_TAB_KEY);
+    if (!raw) return new Map();
+    return new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
+  } catch {
+    return new Map();
+  }
+}
+
+function persistSidebarTabs(tabs: Map<string, string>): void {
+  try {
+    localStorage.setItem(
+      SIDEBAR_TAB_KEY,
+      JSON.stringify(Object.fromEntries(tabs)),
+    );
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 // ── Terminal types ──────────────────────────────────────────────────
 
 export interface SpawnOptions {
@@ -66,9 +89,11 @@ function AppLayout() {
   >(new Map());
   const sessionTerminalsRef = useRef<Map<string, SessionTerminals>>(new Map());
 
-  // ── Right sidebar state: per-session open/closed ───────────────────
+  // ── Right sidebar state: per-session open/closed + active tab ──────
   const [sessionSidebarOpen, setSessionSidebarOpen] =
     useState<Set<string>>(loadSidebarSessions);
+  const [sessionSidebarTab, setSessionSidebarTab] =
+    useState<Map<string, string>>(loadSidebarTabs);
 
   const toggleSidebar = useCallback((sessionId: string) => {
     setSessionSidebarOpen((prev) => {
@@ -79,6 +104,15 @@ function AppLayout() {
         next.add(sessionId);
       }
       persistSidebarSessions(next);
+      return next;
+    });
+  }, []);
+
+  const setSessionTab = useCallback((sessionId: string, tab: string) => {
+    setSessionSidebarTab((prev) => {
+      const next = new Map(prev);
+      next.set(sessionId, tab);
+      persistSidebarTabs(next);
       return next;
     });
   }, []);
@@ -244,7 +278,7 @@ function AppLayout() {
       setSessionTerminals(nextTerminals);
     }
 
-    // Sidebar cleanup
+    // Sidebar cleanup (open state)
     let sidebarChanged = false;
     setSessionSidebarOpen((prev) => {
       const next = new Set(prev);
@@ -256,6 +290,20 @@ function AppLayout() {
       }
       if (sidebarChanged) persistSidebarSessions(next);
       return sidebarChanged ? next : prev;
+    });
+
+    // Sidebar cleanup (tab state)
+    let tabChanged = false;
+    setSessionSidebarTab((prev) => {
+      const next = new Map(prev);
+      for (const id of next.keys()) {
+        if (!currentSessionIds.has(id)) {
+          next.delete(id);
+          tabChanged = true;
+        }
+      }
+      if (tabChanged) persistSidebarTabs(next);
+      return tabChanged ? next : prev;
     });
   }, [openProjects]);
 
@@ -360,6 +408,8 @@ function AppLayout() {
                     <RightSidebar
                       isOpen={sessionSidebarOpen.has(session.id)}
                       onToggle={() => toggleSidebar(session.id)}
+                      activeTab={sessionSidebarTab.get(session.id) ?? "explorer"}
+                      onTabChange={(tab: string) => setSessionTab(session.id, tab)}
                       projectPath={project.path}
                       projectName={project.name}
                     />
