@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { TitleBar, WindowControls, InsetHeader } from "@/components/title-bar";
+import { TitleBar, InsetHeader } from "@/components/title-bar";
 import { Chat } from "@/components/chat/chat";
 import { ProjectWelcome } from "@/components/project/project-welcome";
 import { ProjectSidebar } from "@/components/project/project-sidebar";
@@ -344,10 +344,11 @@ function AppLayout() {
       id="app-container"
       className="flex h-screen w-screen flex-col bg-background"
     >
-      {/* Window controls — fixed overlay at top-right */}
-      <div className="fixed top-0 right-0 z-50">
-        <WindowControls />
-      </div>
+      <InsetHeader
+        projectPath={activeSession?.path ?? activeProject?.path}
+        projectId={activeProject?.id}
+        sessionId={activeSession?.id}
+      />
 
       {/* Unified chrome layer */}
       <div className="flex flex-1 overflow-hidden bg-background/80 backdrop-blur-sm">
@@ -355,18 +356,6 @@ function AppLayout() {
 
         {/* Content column (SidebarInset) */}
         <div className="relative flex min-w-0 flex-1 flex-col">
-          <header
-            className="flex h-9 shrink-0 select-none items-center px-1"
-            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-            onDoubleClick={() => window.electronAPI?.maximize()}
-          >
-            <InsetHeader
-              projectPath={activeSession?.path ?? activeProject?.path}
-              projectId={activeProject?.id}
-              sessionId={activeSession?.id}
-            />
-          </header>
-
           <div className="flex-1 overflow-hidden p-1 pt-0 pb-4">
             <div className="relative flex h-full flex-col rounded-xl bg-muted/30 overflow-hidden">
               {/* Chat area — render every session's chat; only the active one is visible */}

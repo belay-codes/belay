@@ -11,9 +11,8 @@ import {
   Trash2,
   Loader2,
   Circle,
-  Globe,
 } from "lucide-react";
-import belayIcon from "/Belay.svg";
+
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
 import { useSessionStatusRead } from "@/stores/session-status-store";
@@ -925,27 +924,7 @@ export function ProjectSidebar() {
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col">
-      <div
-        className="flex h-9 select-none items-center gap-2 px-3"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        onDoubleClick={() => window.electronAPI?.maximize()}
-      >
-        <img src={belayIcon} alt="" className="size-5" />
-        <span className="text-[13px] font-medium tracking-tight text-foreground">
-          Belay
-        </span>
-        <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-          <button
-            type="button"
-            onClick={() => setShowRegistry(true)}
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="Browse agent registry"
-            title="Browse agent registry"
-          >
-            <Globe className="size-3.5" />
-          </button>
-        </div>
-      </div>
+
 
       <div className="flex items-center gap-2 px-3 pt-1 pb-1.5">
         <MessageSquare className="size-3 text-muted-foreground" />
