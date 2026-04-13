@@ -63,45 +63,50 @@ export function TerminalPanel({
         className="group relative flex h-1 shrink-0 cursor-row-resize items-center justify-center hover:bg-muted/50"
         onMouseDown={handleDragStart}
       >
-        <div className="h-[3px] w-8 rounded-full bg-border transition-colors group-hover:bg-foreground/30" />
+        <div className="h-0.75 w-8 rounded-full bg-border transition-colors group-hover:bg-foreground/30" />
       </div>
 
       {/* Tab bar */}
-      <div className="flex shrink-0 items-center border-b border-border bg-muted/30">
-        {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={cn(
-              "group flex items-center gap-1.5 border-r border-border px-2.5 py-1 text-xs cursor-pointer select-none",
-              tab.id === activeTabId
-                ? "bg-background text-foreground"
-                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-            )}
-            onClick={() => onSelectTab(tab.id)}
-          >
-            <span>{tab.label}</span>
+      <div className="flex shrink-0 items-center gap-1 px-2 pb-1.5 pt-1">
+        {tabs.map((tab) => {
+          const isActive = tab.id === activeTabId;
+
+          return (
             <button
+              key={tab.id}
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCloseTab(tab.id);
-              }}
+              onClick={() => onSelectTab(tab.id)}
               className={cn(
-                "inline-flex size-4 items-center justify-center rounded-sm transition-colors",
-                tab.id === activeTabId
-                  ? "opacity-0 group-hover:opacity-100 hover:bg-muted"
-                  : "opacity-0 group-hover:opacity-100 hover:bg-muted/80",
+                "group/tab relative inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all select-none",
+                isActive
+                  ? "bg-muted text-foreground shadow-sm"
+                  : "text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground",
               )}
-              aria-label={`Close ${tab.label}`}
             >
-              <X className="size-3" />
+              <span>{tab.label}</span>
+              <span
+                role="presentation"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCloseTab(tab.id);
+                }}
+                className={cn(
+                  "inline-flex size-4 items-center justify-center rounded-sm transition-all",
+                  isActive
+                    ? "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10"
+                    : "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
+                )}
+                aria-label={`Close ${tab.label}`}
+              >
+                <X className="size-2.5" />
+              </span>
             </button>
-          </div>
-        ))}
+          );
+        })}
         <button
           type="button"
           onClick={onAddTab}
-          className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-all hover:bg-muted/40 hover:text-foreground"
           aria-label="Open new terminal"
           title="Open new terminal"
         >
