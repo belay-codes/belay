@@ -240,6 +240,13 @@ export function TerminalView({
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  // Ref so the PTY-exit handler always calls the latest onClose without
+  // adding it to the effect dependency array (which would destroy and
+  // recreate every terminal on every render).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -263,7 +270,14 @@ export function TerminalView({
     terminalRef.current = terminal;
 
     // ── Keep terminal sized to its container ───────────────────────
-    const resizeObserver = new ResizeObserver(() => fitAddon.fit());
+    // Guard: skip fit() when the container is hidden (display: none)
+    // — dimensions are 0 and xterm can't compute cols/rows. The
+    // observer fires again with real dimensions when the tab reappears.
+    const resizeObserver = new ResizeObserver(() => {
+      if (container.offsetWidth > 0 && container.offsetHeight > 0) {
+        fitAddon.fit();
+      }
+    });
     resizeObserver.observe(container);
 
     // ── Terminal input → PTY ───────────────────────────────────────
@@ -286,7 +300,7 @@ export function TerminalView({
 
     // ── PTY exit → close ───────────────────────────────────────────
     const unregisterExit = window.electronAPI?.onTerminalExit(id, () => {
-      onClose();
+      onCloseRef.current();
     });
 
     // ── Spawn the PTY process ──────────────────────────────────────
@@ -320,7 +334,7 @@ export function TerminalView({
       terminal.dispose();
       terminalRef.current = null;
     };
-  }, [id, cwd, onClose, spawnOptions]);
+  }, [id, cwd, spawnOptions]);
 
   return <div ref={containerRef} className="h-full w-full p-2" />;
 }
