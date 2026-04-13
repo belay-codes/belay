@@ -1,31 +1,14 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { PanelRightOpen, PanelRightClose, FolderTree } from "lucide-react";
 import { FileExplorer } from "@/components/file-explorer/file-explorer";
-
-// ── Persistence ──────────────────────────────────────────────────────
-
-const SIDEBAR_STATE_KEY = "belay:rightSidebar:open";
-
-function loadSidebarOpen(): boolean {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_STATE_KEY);
-    return raw === "true";
-  } catch {
-    return false;
-  }
-}
-
-function persistSidebarOpen(open: boolean): void {
-  try {
-    localStorage.setItem(SIDEBAR_STATE_KEY, String(open));
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface RightSidebarProps {
+  /** Whether the sidebar is currently open. */
+  isOpen: boolean;
+  /** Callback to toggle the sidebar open/closed state. */
+  onToggle: () => void;
   /** The project root path to explore. If undefined, no explorer is shown. */
   projectPath?: string;
   /** Project display name for the header. */
@@ -39,19 +22,13 @@ const COLLAPSED_WIDTH = 36;
 
 // ── RightSidebar component ───────────────────────────────────────────
 
-export function RightSidebar({ projectPath, projectName }: RightSidebarProps) {
-  const [isOpen, setIsOpen] = useState(loadSidebarOpen);
+export function RightSidebar({
+  isOpen,
+  onToggle,
+  projectPath,
+  projectName,
+}: RightSidebarProps) {
   const [animating, setAnimating] = useState(false);
-
-  // Persist open/closed state
-  useEffect(() => {
-    persistSidebarOpen(isOpen);
-  }, [isOpen]);
-
-  const toggle = useCallback(() => {
-    setAnimating(true);
-    setIsOpen((prev) => !prev);
-  }, []);
 
   // Clear animating flag after transition
   useEffect(() => {
@@ -59,6 +36,11 @@ export function RightSidebar({ projectPath, projectName }: RightSidebarProps) {
     const timer = setTimeout(() => setAnimating(false), 200);
     return () => clearTimeout(timer);
   }, [animating]);
+
+  const handleToggle = () => {
+    setAnimating(true);
+    onToggle();
+  };
 
   return (
     <div
@@ -75,7 +57,7 @@ export function RightSidebar({ projectPath, projectName }: RightSidebarProps) {
       >
         <button
           type="button"
-          onClick={toggle}
+          onClick={handleToggle}
           className={[
             "inline-flex size-7 items-center justify-center rounded-md transition-colors",
             "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -91,7 +73,7 @@ export function RightSidebar({ projectPath, projectName }: RightSidebarProps) {
           <div className="mt-3 flex flex-col items-center">
             <button
               type="button"
-              onClick={toggle}
+              onClick={handleToggle}
               className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 [writing-mode:vertical-rl] hover:text-foreground"
             >
               Explorer
@@ -117,7 +99,7 @@ export function RightSidebar({ projectPath, projectName }: RightSidebarProps) {
           <div className="flex-1" />
           <button
             type="button"
-            onClick={toggle}
+            onClick={handleToggle}
             className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Collapse sidebar"
             title="Collapse sidebar"
@@ -129,10 +111,7 @@ export function RightSidebar({ projectPath, projectName }: RightSidebarProps) {
         {/* Directory explorer content */}
         <div className="flex-1 overflow-hidden">
           {projectPath ? (
-            <FileExplorer
-              rootPath={projectPath}
-              rootLabel={projectName}
-            />
+            <FileExplorer rootPath={projectPath} rootLabel={projectName} />
           ) : (
             <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
               <FolderTree className="size-5 text-muted-foreground/30" />
