@@ -101,6 +101,7 @@ export function GitPanel({ projectPath }: GitPanelProps) {
   const [committing, setCommitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState<"fetch" | "push" | "pull">("push");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // ── Build unified file list ──────────────────────────────────────
 
@@ -126,6 +127,11 @@ export function GitPanel({ projectPath }: GitPanelProps) {
         files.push({ path: entry.path, status: "A", isStaged: false });
       }
     }
+    for (const entry of status.deleted) {
+      if (!stagedSet.has(entry.path)) {
+        files.push({ path: entry.path, status: "D", isStaged: false });
+      }
+    }
     for (const p of status.conflicted) {
       if (!stagedSet.has(p)) {
         files.push({ path: p, status: "C", isStaged: false });
@@ -149,35 +155,42 @@ export function GitPanel({ projectPath }: GitPanelProps) {
 
   const handleToggleFile = useCallback(
     async (filePath: string, currentlyStaged: boolean) => {
-      if (currentlyStaged) {
-        await window.electronAPI?.gitUnstage(projectPath, filePath);
-      } else {
-        await window.electronAPI?.gitStage(projectPath, filePath);
-      }
+      setActionError(null);
+      const err = currentlyStaged
+        ? await window.electronAPI?.gitUnstage(projectPath, filePath)
+        : await window.electronAPI?.gitStage(projectPath, filePath);
+      if (err) setActionError(err.message);
       refresh();
     },
     [projectPath, refresh],
   );
 
   const handleStageAll = useCallback(async () => {
-    await window.electronAPI?.gitStage(projectPath);
+    setActionError(null);
+    const err = await window.electronAPI?.gitStage(projectPath);
+    if (err) setActionError(err.message);
     refresh();
   }, [projectPath, refresh]);
 
   const handleUnstageAll = useCallback(async () => {
-    await window.electronAPI?.gitUnstage(projectPath);
+    setActionError(null);
+    const err = await window.electronAPI?.gitUnstage(projectPath);
+    if (err) setActionError(err.message);
     refresh();
   }, [projectPath, refresh]);
 
   const handleCommit = useCallback(async () => {
     if (!commitMessage.trim() || stagedCount === 0) return;
+    setActionError(null);
     setCommitting(true);
     try {
       const result = await window.electronAPI?.gitCommit(
         projectPath,
         commitMessage.trim(),
       );
-      if (!result?.error) {
+      if (result?.error) {
+        setActionError(result.error.message);
+      } else {
         setCommitMessage("");
       }
       refresh();
@@ -278,9 +291,9 @@ export function GitPanel({ projectPath }: GitPanelProps) {
       </div>
 
       {/* ── Error ── */}
-      {error && (
+      {(error || actionError) && (
         <div className="shrink-0 border-b border-border/30 bg-destructive/5 px-3 py-1.5 text-[11px] text-destructive/80">
-          {error.message}
+          {actionError ?? error!.message}
         </div>
       )}
 

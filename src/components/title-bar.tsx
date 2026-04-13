@@ -178,7 +178,7 @@ export function TitleBar({ projectPath, projectId, sessionId }: TitleBarProps) {
 function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: string; projectId?: string; sessionId?: string }) {
   const { branch, isRepo, branches, worktrees, refresh } =
     useGitBranch(projectPath);
-  const { addSession, setSessionPath, activeProjectId } = useProjectStore();
+  const { addSession, setSessionPath, activeProjectId, removeSession, openProjects } = useProjectStore();
   const [dropdownTab, setDropdownTab] = useState<"branches" | "worktrees">(
     "branches",
   );
@@ -190,52 +190,60 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
   const localBranches = branches.filter((b) => !b.isRemote);
 
   const handleCheckout = async (name: string) => {
-    await window.electronAPI?.gitCheckout(projectPath!, name);
+    if (!projectPath) return;
+    try {
+      await window.electronAPI?.gitCheckout(projectPath, name);
+    } catch { /* error already handled by IPC */ }
     refresh();
   };
 
   const handleCreateBranch = async () => {
-    if (!newBranchName.trim()) return;
+    if (!projectPath || !newBranchName.trim()) return;
     setCreating(true);
-    await window.electronAPI?.gitCreateBranch(
-      projectPath!,
-      newBranchName.trim(),
-      true,
-    );
-    setNewBranchName("");
+    try {
+      await window.electronAPI?.gitCreateBranch(
+        projectPath,
+        newBranchName.trim(),
+        true,
+      );
+      setNewBranchName("");
+    } catch { /* error already handled by IPC */ }
     setCreating(false);
     refresh();
   };
 
   const handleCreateWorktreeFromInput = async () => {
-    if (!newBranchName.trim()) return;
+    if (!projectPath || !newBranchName.trim()) return;
     setCreating(true);
-    const name = newBranchName.trim();
-    await window.electronAPI?.gitCreateBranch(projectPath!, name, false);
-    const parts = projectPath!.replace(/\\/g, "/").split("/");
-    const parent = parts.slice(0, -1).join("/");
-    const slug = name.replace(/[^a-zA-Z0-9._-]/g, "-");
-    const target = parent + "/" + slug;
-    const err = await window.electronAPI?.gitCreateWorktree(
-      projectPath!,
-      name,
-      target,
-    );
-    if (!err && activeProjectId) {
-      addSession(activeProjectId, { title: name, path: target });
-    }
-    setNewBranchName("");
+    try {
+      const name = newBranchName.trim();
+      await window.electronAPI?.gitCreateBranch(projectPath, name, false);
+      const parts = projectPath.replace(/\\/g, "/").split("/");
+      const parent = parts.slice(0, -1).join("/");
+      const slug = name.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^\.+|\.+$/g, "").replace(/--+/g, "-") || "worktree";
+      const target = parent + "/" + slug;
+      const err = await window.electronAPI?.gitCreateWorktree(
+        projectPath,
+        name,
+        target,
+      );
+      if (!err && activeProjectId) {
+        addSession(activeProjectId, { title: name, path: target });
+      }
+      setNewBranchName("");
+    } catch { /* error already handled by IPC */ }
     setCreating(false);
     refresh();
   };
 
   const handleCreateWorktree = async (branchName: string) => {
-    const parts = projectPath!.replace(/\\/g, "/").split("/");
+    if (!projectPath) return;
+    const parts = projectPath.replace(/\\/g, "/").split("/");
     const parent = parts.slice(0, -1).join("/");
-    const slug = branchName.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const slug = branchName.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/^\.+|\.+$/g, "").replace(/--+/g, "-") || "worktree";
     const target = parent + "/" + slug;
     const err = await window.electronAPI?.gitCreateWorktree(
-      projectPath!,
+      projectPath,
       branchName,
       target,
     );
@@ -431,7 +439,19 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                                     <Menu.Item
                                       className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-destructive/70 outline-none transition-colors hover:bg-destructive/10 hover:text-destructive"
                                       onClick={async () => {
-                                        await window.electronAPI?.gitRemoveWorktree(projectPath!, wt.path, true);
+                                        if (!projectPath) return;
+                                        await window.electronAPI?.gitRemoveWorktree(projectPath, wt.path, true);
+                                        if (projectId) {
+                                          const project = openProjects.find(p => p.id === projectId);
+                                          if (project) {
+                                            const normalizedWtPath = wt.path.replace(/\\/g, "/");
+                                            for (const session of project.sessions) {
+                                              if (session.path && session.path.replace(/\\/g, "/") === normalizedWtPath) {
+                                                removeSession(projectId, session.id);
+                                              }
+                                            }
+                                          }
+                                        }
                                         if (isCurrent && projectId && sessionId) {
                                           setSessionPath(projectId, sessionId, undefined);
                                         }

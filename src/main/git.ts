@@ -21,6 +21,7 @@ interface GitStatus {
   staged: GitFileEntry[];
   modified: GitFileEntry[];
   created: GitFileEntry[];
+  deleted: GitFileEntry[];
   notAdded: string[];
   conflicted: string[];
   isClean: boolean;
@@ -127,6 +128,13 @@ export async function getStatus(
         return toFileEntry(p, idx?.index ?? " ", idx?.working_dir ?? "A");
       });
 
+    const deleted: GitFileEntry[] = status.deleted
+      .filter((p) => !status.staged.includes(p))
+      .map((p) => {
+        const idx = status.files.find((f) => f.path === p);
+        return toFileEntry(p, idx?.index ?? " ", idx?.working_dir ?? "D");
+      });
+
     return ok({
       current: status.current,
       tracking: status.tracking,
@@ -135,6 +143,7 @@ export async function getStatus(
       staged,
       modified,
       created,
+      deleted,
       notAdded: status.not_added,
       conflicted: status.conflicted,
       isClean: status.isClean(),
@@ -409,8 +418,6 @@ export async function listWorktrees(
         if (current && !current.ref) {
           current.ref = line.slice("HEAD ".length).slice(0, 7);
         }
-      } else if (line === "bare") {
-        if (current) current.isMain = true;
       } else if (line.startsWith("locked")) {
         if (current) current.isLocked = true;
       }

@@ -23,6 +23,8 @@ export interface GitStatus {
   modified: GitFileEntry[];
   /** Files created but not yet tracked */
   created: GitFileEntry[];
+  /** Files deleted from the working tree (not staged) */
+  deleted: GitFileEntry[];
   /** Files not tracked by git */
   notAdded: string[];
   /** Files with merge conflicts */
