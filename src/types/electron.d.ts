@@ -183,6 +183,7 @@ export interface ElectronAPI {
   }>;
   gitPush: (dirPath: string) => Promise<GitError | null>;
   gitPull: (dirPath: string) => Promise<GitError | null>;
+  gitFetch: (dirPath: string) => Promise<GitError | null>;
   gitCheckout: (
     dirPath: string,
     branch: string,

@@ -274,6 +274,10 @@ ipcMain.handle("git:pull", async (_event, dirPath: string) => {
   return git.pull(dirPath);
 });
 
+ipcMain.handle("git:fetch", async (_event, dirPath: string) => {
+  return git.fetch(dirPath);
+});
+
 ipcMain.handle(
   "git:checkout",
   async (_event, dirPath: string, branch: string) => {

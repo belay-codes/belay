@@ -313,6 +313,21 @@ export async function pull(dirPath: string): Promise<GitError | null> {
   }
 }
 
+// ── fetch ────────────────────────────────────────────────────────────
+
+export async function fetch(dirPath: string): Promise<GitError | null> {
+  try {
+    const git = simpleGit(dirPath);
+    await git.fetch();
+    return null;
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : String(error),
+      command: "fetch",
+    };
+  }
+}
+
 // ── checkout ─────────────────────────────────────────────────────────
 
 export async function checkout(

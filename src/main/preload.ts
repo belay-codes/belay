@@ -165,6 +165,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("git:commit", dirPath, message),
   gitPush: (dirPath: string) => ipcRenderer.invoke("git:push", dirPath),
   gitPull: (dirPath: string) => ipcRenderer.invoke("git:pull", dirPath),
+  gitFetch: (dirPath: string) => ipcRenderer.invoke("git:fetch", dirPath),
   gitCheckout: (dirPath: string, branch: string) =>
     ipcRenderer.invoke("git:checkout", dirPath, branch),
   gitCreateBranch: (dirPath: string, name: string, checkout?: boolean) =>

@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Circle,
   ArrowUpDown,
+  Download,
 } from "lucide-react";
 import { useGitStatus } from "@/hooks/use-git";
 
@@ -99,7 +100,7 @@ export function GitPanel({ projectPath }: GitPanelProps) {
   const [commitMessage, setCommitMessage] = useState("");
   const [committing, setCommitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [syncMode, setSyncMode] = useState<"pull" | "push">("push");
+  const [syncMode, setSyncMode] = useState<"fetch" | "push" | "pull">("push");
 
   // ── Build unified file list ──────────────────────────────────────
 
@@ -185,19 +186,25 @@ export function GitPanel({ projectPath }: GitPanelProps) {
     }
   }, [projectPath, commitMessage, stagedCount, refresh]);
 
+  // Resolve effective mode: if user has "push" selected but nothing to push, fetch instead
+  const effectiveMode: "fetch" | "push" | "pull" =
+    syncMode === "push" && ahead === 0 ? "fetch" : syncMode;
+
   const handleSync = useCallback(async () => {
     setSyncing(true);
     try {
-      if (syncMode === "push") {
+      if (effectiveMode === "push") {
         await window.electronAPI?.gitPush(projectPath);
-      } else {
+      } else if (effectiveMode === "pull") {
         await window.electronAPI?.gitPull(projectPath);
+      } else {
+        await window.electronAPI?.gitFetch(projectPath);
       }
       refresh();
     } finally {
       setSyncing(false);
     }
-  }, [projectPath, syncMode, refresh]);
+  }, [projectPath, effectiveMode, refresh]);
 
   // ── Loading ───────────────────────────────────────────────────────
 
@@ -331,15 +338,20 @@ export function GitPanel({ projectPath }: GitPanelProps) {
             disabled={syncing}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border/40 py-1.5 text-[11px] font-medium text-muted-foreground/50 transition-colors hover:bg-muted/30 hover:text-foreground disabled:opacity-30"
           >
-            {syncMode === "push" ? (
+            {effectiveMode === "push" ? (
               <>
                 <ArrowUp className="size-3" />
                 Push
               </>
-            ) : (
+            ) : effectiveMode === "pull" ? (
               <>
                 <ArrowDown className="size-3" />
                 Pull
+              </>
+            ) : (
+              <>
+                <Download className="size-3" />
+                Fetch
               </>
             )}
             {syncing && (
@@ -349,10 +361,12 @@ export function GitPanel({ projectPath }: GitPanelProps) {
           <button
             type="button"
             onClick={() =>
-              setSyncMode((m) => (m === "push" ? "pull" : "push"))
+              setSyncMode((m) =>
+                m === "push" ? "pull" : m === "pull" ? "fetch" : "push",
+              )
             }
             className="flex size-[30px] shrink-0 items-center justify-center rounded-md border border-border/40 text-muted-foreground/30 transition-colors hover:bg-muted/30 hover:text-foreground"
-            title={`Switch to ${syncMode === "push" ? "Pull" : "Push"}`}
+            title={`Switch to ${syncMode === "push" ? "Pull" : syncMode === "pull" ? "Fetch" : "Push"}`}
           >
             <ArrowUpDown className="size-3" />
           </button>
