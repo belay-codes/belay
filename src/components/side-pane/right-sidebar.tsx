@@ -67,7 +67,7 @@ export function RightSidebar({
       style={{ width: isOpen ? SIDEBAR_WIDTH : COLLAPSED_WIDTH }}
     >
       {/* ── Icon rail ── */}
-      <div className="flex shrink-0 flex-col items-center pt-2" style={{ width: COLLAPSED_WIDTH }}>
+      <div className="flex shrink-0 flex-col items-center border-r border-border/40 pt-2" style={{ width: COLLAPSED_WIDTH }}>
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
