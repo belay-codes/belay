@@ -7,11 +7,6 @@ import "@xterm/xterm/css/xterm.css";
 // ── CSS custom property → hex colour resolution ─────────────────────
 
 /**
- * Hidden probe element used to resolve CSS custom properties (including
- * oklch, hsl, etc.) to computed `rgb()` values.  Created lazily, kept
- * for the lifetime of the page.
- */
-/**
  * Read a CSS custom property from `:root` and return the value as
  * `#rrggbb`.  Reads the raw variable value from document.documentElement
  * and uses a canvas 2D context to normalise any colour format (oklch,
@@ -100,7 +95,22 @@ function hexToRgba(hex: string, alpha: number): string {
  * mapping produces a completely colourless terminal.  We keep bg/fg/cursor
  * from the CSS vars but inject proper chromatic ANSI colours instead.
  */
-const DEFAULT_LIGHT_ANSI = {
+/**
+ * Complete xterm theme for the default light mode.
+ *
+ * Background/foreground are hardcoded because the default light/dark
+ * themes define their CSS vars as oklch() values (e.g. oklch(1 0 0))
+ * which neither the canvas 2D context nor the probe-element approach
+ * can reliably resolve to hex in all Chromium versions.  oklch(1 0 0)
+ * = #ffffff (white), oklch(0.145 0 0) ≈ #0a0a0a (near-black).
+ */
+const DEFAULT_LIGHT_THEME = {
+  background: "#ffffff",
+  foreground: "#0a0a0a",
+  cursor: "#0a0a0a",
+  cursorAccent: "#ffffff",
+  selectionBackground: "rgba(10, 10, 10, 0.2)",
+  selectionInactiveBackground: "rgba(10, 10, 10, 0.1)",
   black: "#e1e2e7",
   red: "#d20f39",
   green: "#2b8a3e",
@@ -119,7 +129,14 @@ const DEFAULT_LIGHT_ANSI = {
   brightWhite: "#1e1e2e",
 };
 
-const DEFAULT_DARK_ANSI = {
+/** oklch(0.145 0 0) ≈ #0a0a0a, oklch(0.985 0 0) ≈ #fafafa */
+const DEFAULT_DARK_THEME = {
+  background: "#0a0a0a",
+  foreground: "#fafafa",
+  cursor: "#fafafa",
+  cursorAccent: "#0a0a0a",
+  selectionBackground: "rgba(250, 250, 250, 0.2)",
+  selectionInactiveBackground: "rgba(250, 250, 250, 0.1)",
   black: "#1e1e2e",
   red: "#f38ba8",
   green: "#a6e3a1",
@@ -139,33 +156,23 @@ const DEFAULT_DARK_ANSI = {
 };
 
 function buildXtermTheme() {
-  const background = cssVarToHex("--background");
-  const foreground = cssVarToHex("--foreground");
-
   // Named themes (catppuccin-*, dracula, nord, …) carry chromatic chart
-  // colours, so the CSS-var → ANSI mapping works perfectly.  The default
-  // light/dark themes use achromatic oklch(L 0 0) chart colours — every
-  // slot resolves to a shade of grey.  Detect that case and fall back to
-  // a proper ANSI palette while still reading bg/fg from CSS vars.
+  // colours that map cleanly to ANSI slots via CSS custom properties.
+  // The default light/dark themes use achromatic oklch(L 0 0) chart
+  // colours (pure grey), AND their CSS vars are in oklch() format which
+  // cssVarToHex cannot resolve.  Return fully hardcoded themes for those.
   const hasNamedTheme = [...document.documentElement.classList].some((c) =>
     c.startsWith("theme-"),
   );
 
   if (!hasNamedTheme) {
     const isDark = document.documentElement.classList.contains("dark");
-    const ansi = isDark ? DEFAULT_DARK_ANSI : DEFAULT_LIGHT_ANSI;
-    return {
-      background,
-      foreground,
-      cursor: foreground,
-      cursorAccent: background,
-      selectionBackground: hexToRgba(foreground, 0.2),
-      selectionInactiveBackground: hexToRgba(foreground, 0.1),
-      ...ansi,
-    };
+    return isDark ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME;
   }
 
   // Named theme — map CSS vars to ANSI slots.
+  const background = cssVarToHex("--background");
+  const foreground = cssVarToHex("--foreground");
   const card = cssVarToHex("--card");
   const primary = cssVarToHex("--primary");
   const destructive = cssVarToHex("--destructive");
