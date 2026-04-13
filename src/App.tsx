@@ -4,10 +4,33 @@ import { Chat } from "@/components/chat/chat";
 import { ProjectWelcome } from "@/components/project/project-welcome";
 import { ProjectSidebar } from "@/components/project/project-sidebar";
 import { TerminalPanel } from "@/components/terminal/terminal-panel";
+import { RightSidebar } from "@/components/side-pane/right-sidebar";
 import { ProjectStoreProvider, useProjectStore } from "@/stores/project-store";
 import { MessageStoreProvider } from "@/stores/message-store";
 import { SessionStatusStoreProvider } from "@/stores/session-status-store";
 import { useInstalledHarnesses } from "@/hooks/use-acp";
+
+// ── Right sidebar persistence (per-session) ────────────────────────
+
+const SIDEBAR_STATE_KEY = "belay:rightSidebar:openSessions";
+
+function loadSidebarSessions(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_STATE_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistSidebarSessions(ids: Set<string>): void {
+  try {
+    localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 // ── Terminal types ──────────────────────────────────────────────────
 
@@ -42,6 +65,23 @@ function AppLayout() {
     Map<string, SessionTerminals>
   >(new Map());
   const sessionTerminalsRef = useRef<Map<string, SessionTerminals>>(new Map());
+
+  // ── Right sidebar state: per-session open/closed ───────────────────
+  const [sessionSidebarOpen, setSessionSidebarOpen] =
+    useState<Set<string>>(loadSidebarSessions);
+
+  const toggleSidebar = useCallback((sessionId: string) => {
+    setSessionSidebarOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+      persistSidebarSessions(next);
+      return next;
+    });
+  }, []);
 
   const syncRef = (next: Map<string, SessionTerminals>) => {
     sessionTerminalsRef.current = next;
@@ -183,24 +223,40 @@ function AppLayout() {
     [],
   );
 
-  // Kill terminal processes for sessions that no longer exist
+  // Kill terminal processes and clean sidebar state for sessions that no longer exist
   useEffect(() => {
     const currentSessionIds = new Set(
       openProjects.flatMap((p) => p.sessions.map((s) => s.id)),
     );
-    let changed = false;
-    const next = new Map(sessionTerminalsRef.current);
-    for (const [sessionId, data] of next) {
+
+    // Terminal cleanup
+    let terminalsChanged = false;
+    const nextTerminals = new Map(sessionTerminalsRef.current);
+    for (const [sessionId, data] of nextTerminals) {
       if (!currentSessionIds.has(sessionId)) {
         data.tabs.forEach((t) => window.electronAPI?.terminalKill(t.id));
-        next.delete(sessionId);
-        changed = true;
+        nextTerminals.delete(sessionId);
+        terminalsChanged = true;
       }
     }
-    if (changed) {
-      sessionTerminalsRef.current = next;
-      setSessionTerminals(next);
+    if (terminalsChanged) {
+      sessionTerminalsRef.current = nextTerminals;
+      setSessionTerminals(nextTerminals);
     }
+
+    // Sidebar cleanup
+    let sidebarChanged = false;
+    setSessionSidebarOpen((prev) => {
+      const next = new Set(prev);
+      for (const id of next) {
+        if (!currentSessionIds.has(id)) {
+          next.delete(id);
+          sidebarChanged = true;
+        }
+      }
+      if (sidebarChanged) persistSidebarSessions(next);
+      return sidebarChanged ? next : prev;
+    });
   }, [openProjects]);
 
   // ── Notification click handler: navigate to the relevant session ──
@@ -268,33 +324,44 @@ function AppLayout() {
               return (
                 <div
                   key={session.id}
-                  className={
-                    isActive ? "absolute inset-0 flex flex-col" : "hidden"
-                  }
+                  className={isActive ? "absolute inset-0 flex" : "hidden"}
                 >
-                  <Chat
-                    sessionId={session.id}
-                    projectId={project.id}
-                    projectPath={project.path}
-                    terminalOpen={isTerminalOpen}
-                    onToggleTerminal={() =>
-                      toggleTerminal(session.id, spawnOptions)
-                    }
-                  />
-                  {isTerminalOpen && (
-                    <TerminalPanel
+                  {/* Chat + Terminal column */}
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <Chat
+                      sessionId={session.id}
+                      projectId={project.id}
                       projectPath={project.path}
-                      tabs={terminalData!.tabs}
-                      activeTabId={terminalData!.activeTabId}
-                      onSelectTab={(tabId) => selectTab(session.id, tabId)}
-                      onAddTab={() => addTab(session.id, spawnOptions)}
-                      onCloseTab={(tabId) => closeTab(session.id, tabId)}
-                      onRenameTab={(tabId, label) =>
-                        renameTab(session.id, tabId, label)
+                      terminalOpen={isTerminalOpen}
+                      onToggleTerminal={() =>
+                        toggleTerminal(session.id, spawnOptions)
                       }
-                      onReorderTabs={(fromIndex, toIndex) =>
-                        reorderTabs(session.id, fromIndex, toIndex)
-                      }
+                    />
+                    {isTerminalOpen && (
+                      <TerminalPanel
+                        projectPath={project.path}
+                        tabs={terminalData!.tabs}
+                        activeTabId={terminalData!.activeTabId}
+                        onSelectTab={(tabId) => selectTab(session.id, tabId)}
+                        onAddTab={() => addTab(session.id, spawnOptions)}
+                        onCloseTab={(tabId) => closeTab(session.id, tabId)}
+                        onRenameTab={(tabId, label) =>
+                          renameTab(session.id, tabId, label)
+                        }
+                        onReorderTabs={(fromIndex, toIndex) =>
+                          reorderTabs(session.id, fromIndex, toIndex)
+                        }
+                      />
+                    )}
+                  </div>
+
+                  {/* Right sidebar — directory explorer per session */}
+                  {isActive && (
+                    <RightSidebar
+                      isOpen={sessionSidebarOpen.has(session.id)}
+                      onToggle={() => toggleSidebar(session.id)}
+                      projectPath={project.path}
+                      projectName={project.name}
                     />
                   )}
                 </div>

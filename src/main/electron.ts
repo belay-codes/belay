@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, Notification } from "electron";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { connectionManager } from "./acp/connection-manager.js";
 import { terminalManager } from "./terminal.js";
 import {
@@ -174,6 +175,45 @@ ipcMain.handle(
 
 ipcMain.handle("session:deleteMessages", async (_event, sessionId: string) => {
   await deleteSessionMessages(sessionId);
+});
+
+// ── IPC handlers for directory explorer ──────────────────────────────
+
+ipcMain.handle("fs:readDir", async (_event, dirPath: string) => {
+  try {
+    const entries = await fs.promises.readdir(dirPath, {
+      withFileTypes: true,
+    });
+    const statPromises = entries
+      .filter((entry) => !entry.name.startsWith("."))
+      .map(async (entry) => {
+        try {
+          const fullPath = path.join(dirPath, entry.name);
+          const stat = await fs.promises.stat(fullPath);
+          return {
+            name: entry.name,
+            isDirectory: stat.isDirectory(),
+            isFile: stat.isFile(),
+            size: stat.size,
+            modifiedAt: stat.mtimeMs,
+          };
+        } catch {
+          return null;
+        }
+      });
+    const results = (await Promise.all(statPromises)).filter(
+      (e): e is NonNullable<typeof e> => e !== null,
+    );
+    // Sort: directories first, then alphabetical
+    results.sort((a, b) => {
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    return results;
+  } catch {
+    return [];
+  }
 });
 
 // ── IPC handlers for ACP operations ──────────────────────────────────
