@@ -360,13 +360,9 @@ export function GitPanel({ projectPath }: GitPanelProps) {
           </button>
           <button
             type="button"
-            onClick={() =>
-              setSyncMode((m) =>
-                m === "push" ? "pull" : m === "pull" ? "fetch" : "push",
-              )
-            }
+            onClick={() => setSyncMode(effectiveMode === "pull" ? "push" : "pull")}
             className="flex size-[30px] shrink-0 items-center justify-center rounded-md border border-border/40 text-muted-foreground/30 transition-colors hover:bg-muted/30 hover:text-foreground"
-            title={`Switch to ${syncMode === "push" ? "Pull" : syncMode === "pull" ? "Fetch" : "Push"}`}
+            title={`Switch to ${effectiveMode === "pull" ? (ahead > 0 ? "Push" : "Fetch") : "Pull"}`}
           >
             <ArrowUpDown className="size-3" />
           </button>
