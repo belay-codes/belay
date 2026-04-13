@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Minus, Square, X, Globe, Settings, GitBranch, Plus, Check, FolderTree, MoreHorizontal, Trash2, SplitSquareHorizontal } from "lucide-react";
 import { Menu } from "@base-ui/react/menu";
 import belayIcon from "/Belay.svg";
@@ -184,7 +184,6 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
   );
   const [newBranchName, setNewBranchName] = useState("");
   const [creating, setCreating] = useState(false);
-  const [contextWorktree, setContextWorktree] = useState<string | null>(null);
 
   if (!isRepo || !branch) return null;
 
@@ -383,8 +382,7 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                         wt.path.replace(/\\/g, "/") ===
                         projectPath?.replace(/\\/g, "/");
                       return (
-                        <Fragment key={wt.path}>
-                        <Menu.Item
+                        <div
                           key={wt.path}
                           className={[
                             "flex w-full items-center gap-2 rounded-md px-2 py-1 text-[12px] outline-none transition-colors",
@@ -393,7 +391,6 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                               : "cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground",
                           ].join(" ")}
                           onClick={() => {
-                            setContextWorktree(null);
                             if (!isCurrent && projectId && sessionId) {
                               setSessionPath(projectId, sessionId, wt.path);
                             }
@@ -410,55 +407,46 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                             <Check className="size-3 shrink-0 text-muted-foreground/40" />
                           )}
                           {!wt.isMain && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setContextWorktree(
-                                  contextWorktree === wt.path ? null : wt.path,
-                                );
-                              }}
-                              className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/20 transition-colors hover:bg-muted hover:text-foreground"
-                              title="More options"
-                            >
-                              <MoreHorizontal className="size-3" />
-                            </button>
+                            <Menu.Root>
+                              <Menu.Trigger
+                                className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/20 transition-colors hover:bg-muted hover:text-foreground"
+                                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                              >
+                                <MoreHorizontal className="size-3" />
+                              </Menu.Trigger>
+                              <Menu.Portal>
+                                <Menu.Positioner sideOffset={4} align="end" className="z-[60]">
+                                  <Menu.Popup className="w-44 rounded-lg border border-border bg-popover p-1 shadow-lg outline-none">
+                                    <Menu.Item
+                                      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground"
+                                      onClick={() => {
+                                        if (activeProjectId) {
+                                          addSession(activeProjectId, { title: wt.ref, path: wt.path });
+                                        }
+                                      }}
+                                    >
+                                      <SplitSquareHorizontal className="size-3.5" />
+                                      Open in new session
+                                    </Menu.Item>
+                                    <Menu.Item
+                                      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-destructive/70 outline-none transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                      onClick={async () => {
+                                        await window.electronAPI?.gitRemoveWorktree(projectPath!, wt.path, true);
+                                        if (isCurrent && projectId && sessionId) {
+                                          setSessionPath(projectId, sessionId, undefined);
+                                        }
+                                        refresh();
+                                      }}
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                      Delete worktree
+                                    </Menu.Item>
+                                  </Menu.Popup>
+                                </Menu.Positioner>
+                              </Menu.Portal>
+                            </Menu.Root>
                           )}
-                        </Menu.Item>
-                        {contextWorktree === wt.path && (
-                          <div className="flex items-center gap-1 pl-6 pr-2 py-0.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (activeProjectId) {
-                                  addSession(activeProjectId, { title: wt.ref, path: wt.path });
-                                }
-                                setContextWorktree(null);
-                              }}
-                              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
-                            >
-                              <SplitSquareHorizontal className="size-3" />
-                              Open in new session
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await window.electronAPI?.gitRemoveWorktree(projectPath!, wt.path, true);
-                                // If current session was on this worktree, reset path
-                                if (isCurrent && projectId && sessionId) {
-                                  setSessionPath(projectId, sessionId, undefined);
-                                }
-                                setContextWorktree(null);
-                                refresh();
-                              }}
-                              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-destructive/60 transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            >
-                              <Trash2 className="size-3" />
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                        </Fragment>
+                        </div>
                       );
                     })
                   )}
