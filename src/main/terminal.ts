@@ -48,6 +48,18 @@ export class TerminalManager {
       if (options?.wslDistro) {
         spawnArgs.push("-d", options.wslDistro);
       }
+      // Pass --cd with Linux path so WSL starts in the right directory.
+      // We do NOT set cwd to a Linux path because node-pty (ConPTY)
+      // expects a valid Windows path for its cwd option.
+      if (cwd) {
+        const linuxPath = cwd
+          .replace(/\\/g, "/")
+          .replace(
+            /^([A-Za-z]):/,
+            (_, letter: string) => `/mnt/${letter.toLowerCase()}`,
+          );
+        spawnArgs.push("--cd", linuxPath);
+      }
     } else if (isWindows) {
       shell = process.env.COMSPEC || "cmd.exe";
       spawnArgs = [];
@@ -64,17 +76,9 @@ export class TerminalManager {
 
     const workingDir = cwd || os.homedir();
 
-    // On Windows with WSL, convert the working directory to a WSL path
-    let effectiveCwd = workingDir;
-    if (isWindows && useWsl && workingDir) {
-      // Convert C:\path → /mnt/c/path
-      effectiveCwd = workingDir
-        .replace(/\\/g, "/")
-        .replace(
-          /^([A-Za-z]):/,
-          (_, letter: string) => `/mnt/${letter.toLowerCase()}`,
-        );
-    }
+    // node-pty on Windows expects a valid Windows path for cwd.
+    // For WSL sessions the directory is set via --cd in spawnArgs instead.
+    const effectiveCwd = workingDir;
 
     const name = path.basename(shell);
 
