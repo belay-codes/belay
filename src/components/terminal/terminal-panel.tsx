@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TerminalView } from "./terminal";
@@ -11,6 +11,7 @@ interface TerminalPanelProps {
   onSelectTab: (tabId: string) => void;
   onAddTab: () => void;
   onCloseTab: (tabId: string) => void;
+  onRenameTab: (tabId: string, label: string) => void;
 }
 
 export function TerminalPanel({
@@ -20,9 +21,13 @@ export function TerminalPanel({
   onSelectTab,
   onAddTab,
   onCloseTab,
+  onRenameTab,
 }: TerminalPanelProps) {
   const [height, setHeight] = useState(250);
   const [isDragging, setIsDragging] = useState(false);
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -50,6 +55,35 @@ export function TerminalPanel({
     };
   }, [isDragging]);
 
+  // Auto-focus and select the rename input when it appears
+  useEffect(() => {
+    if (renamingTabId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingTabId]);
+
+  const startRename = useCallback((e: React.MouseEvent, tab: TerminalTab) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRenamingTabId(tab.id);
+    setRenameValue(tab.label);
+  }, []);
+
+  const confirmRename = useCallback(() => {
+    if (renamingTabId) {
+      const trimmed = renameValue.trim();
+      if (trimmed) {
+        onRenameTab(renamingTabId, trimmed);
+      }
+      setRenamingTabId(null);
+    }
+  }, [renamingTabId, renameValue, onRenameTab]);
+
+  const cancelRename = useCallback(() => {
+    setRenamingTabId(null);
+  }, []);
+
   return (
     <div
       className={cn(
@@ -70,12 +104,16 @@ export function TerminalPanel({
       <div className="flex shrink-0 items-center gap-1 px-2 pb-1.5 pt-1">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
+          const isRenaming = renamingTabId === tab.id;
 
           return (
             <button
               key={tab.id}
               type="button"
-              onClick={() => onSelectTab(tab.id)}
+              onClick={() => {
+                if (!isRenaming) onSelectTab(tab.id);
+              }}
+              onContextMenu={(e) => startRename(e, tab)}
               className={cn(
                 "group/tab relative inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all select-none",
                 isActive
@@ -83,23 +121,49 @@ export function TerminalPanel({
                   : "text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground",
               )}
             >
-              <span>{tab.label}</span>
-              <span
-                role="presentation"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseTab(tab.id);
-                }}
-                className={cn(
-                  "inline-flex size-4 items-center justify-center rounded-sm transition-all",
-                  isActive
-                    ? "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10"
-                    : "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
-                )}
-                aria-label={`Close ${tab.label}`}
-              >
-                <X className="size-2.5" />
-              </span>
+              {isRenaming ? (
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      confirmRename();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                  onBlur={confirmRename}
+                  onClick={(e) => e.stopPropagation()}
+                  className={cn(
+                    "w-24 rounded-sm bg-transparent px-0.5 text-[11px] font-medium outline-none ring-1 ring-ring",
+                    isActive ? "text-foreground" : "text-foreground",
+                  )}
+                />
+              ) : (
+                <span>{tab.label}</span>
+              )}
+              {!isRenaming && (
+                <span
+                  role="presentation"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseTab(tab.id);
+                  }}
+                  className={cn(
+                    "inline-flex size-4 items-center justify-center rounded-sm transition-all",
+                    isActive
+                      ? "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10"
+                      : "opacity-0 group-hover/tab:opacity-100 hover:bg-foreground/10",
+                  )}
+                  aria-label={`Close ${tab.label}`}
+                >
+                  <X className="size-2.5" />
+                </span>
+              )}
             </button>
           );
         })}

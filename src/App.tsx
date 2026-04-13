@@ -145,6 +145,25 @@ function AppLayout() {
     });
   }, []);
 
+  /** Rename a terminal tab. */
+  const renameTab = useCallback(
+    (sessionId: string, tabId: string, label: string) => {
+      setSessionTerminals((prev) => {
+        const existing = prev.get(sessionId);
+        if (!existing) return prev;
+        const next = new Map(prev);
+        next.set(sessionId, {
+          ...existing,
+          tabs: existing.tabs.map((t) =>
+            t.id === tabId ? { ...t, label } : t,
+          ),
+        });
+        return syncRef(next);
+      });
+    },
+    [],
+  );
+
   // Kill terminal processes for sessions that no longer exist
   useEffect(() => {
     const currentSessionIds = new Set(
@@ -251,6 +270,9 @@ function AppLayout() {
                       onSelectTab={(tabId) => selectTab(session.id, tabId)}
                       onAddTab={() => addTab(session.id, spawnOptions)}
                       onCloseTab={(tabId) => closeTab(session.id, tabId)}
+                      onRenameTab={(tabId, label) =>
+                        renameTab(session.id, tabId, label)
+                      }
                     />
                   )}
                 </div>
