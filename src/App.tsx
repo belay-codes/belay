@@ -356,7 +356,7 @@ function AppLayout() {
 
         {/* Content column (SidebarInset) */}
         <div className="relative flex min-w-0 flex-1 flex-col">
-          <div className="flex-1 overflow-hidden p-1 pt-0 pb-4">
+          <div className="flex-1 overflow-hidden p-1 pt-0 pb-3">
             <div className="relative flex h-full flex-col rounded-xl bg-muted/30 overflow-hidden">
               {/* Chat area — render every session's chat; only the active one is visible */}
               {openProjects.map((project) =>
