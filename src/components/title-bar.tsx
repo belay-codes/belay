@@ -178,10 +178,8 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
   const [dropdownTab, setDropdownTab] = useState<"branches" | "worktrees">(
     "branches",
   );
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [newBranchName, setNewBranchName] = useState("");
   const [creating, setCreating] = useState(false);
-  const [openAsWorktree, setOpenAsWorktree] = useState(false);
 
   if (!isRepo || !branch) return null;
 
@@ -192,33 +190,37 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
     refresh();
   };
 
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
+  const handleCreateBranch = async () => {
+    if (!newBranchName.trim()) return;
     setCreating(true);
-    const name = newName.trim();
+    await window.electronAPI?.gitCreateBranch(
+      projectPath!,
+      newBranchName.trim(),
+      true,
+    );
+    setNewBranchName("");
+    setCreating(false);
+    refresh();
+  };
 
-    if (openAsWorktree) {
-      // Create branch (without checkout), create worktree, open as new project
-      await window.electronAPI?.gitCreateBranch(projectPath!, name, false);
-      const parts = projectPath!.replace(/\\/g, "/").split("/");
-      const parent = parts.slice(0, -1).join("/");
-      const slug = name.replace(/[^a-zA-Z0-9._-]/g, "-");
-      const target = parent + "/" + slug;
-      const err = await window.electronAPI?.gitCreateWorktree(
-        projectPath!,
-        name,
-        target,
-      );
-      if (!err) {
-        openProject(target);
-      }
-    } else {
-      await window.electronAPI?.gitCreateBranch(projectPath!, name, true);
+  const handleCreateWorktreeFromInput = async () => {
+    if (!newBranchName.trim()) return;
+    setCreating(true);
+    const name = newBranchName.trim();
+    await window.electronAPI?.gitCreateBranch(projectPath!, name, false);
+    const parts = projectPath!.replace(/\\/g, "/").split("/");
+    const parent = parts.slice(0, -1).join("/");
+    const slug = name.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const target = parent + "/" + slug;
+    const err = await window.electronAPI?.gitCreateWorktree(
+      projectPath!,
+      name,
+      target,
+    );
+    if (!err) {
+      openProject(target);
     }
-
-    setNewName("");
-    setShowCreate(false);
-    setOpenAsWorktree(false);
+    setNewBranchName("");
     setCreating(false);
     refresh();
   };
@@ -315,62 +317,43 @@ function BranchDropdown({ projectPath }: { projectPath?: string }) {
                     </Menu.Item>
                   ))}
 
-                  {/* Create branch */}
-                  {showCreate ? (
-                    <div
-                      className="px-1 py-1"
-                      onMouseDown={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="text"
-                          value={newName}
-                          onChange={(e) => setNewName(e.target.value)}
-                          placeholder="Branch name…"
-                          autoFocus
-                          disabled={creating}
-                          className="min-w-0 flex-1 rounded border border-border/50 bg-transparent px-1.5 py-0.5 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:border-foreground/20 focus:outline-none"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleCreate();
-                            if (e.key === "Escape") {
-                              setShowCreate(false);
-                              setNewName("");
-                            }
-                          }}
-                        />
+                  {/* ── Create branch input ── */}
+                  <div className="flex items-center gap-1 border-t border-border/30 px-1 pt-1">
+                    <Plus className="size-3 shrink-0 text-muted-foreground/30" />
+                    <input
+                      type="text"
+                      value={newBranchName}
+                      onChange={(e) => setNewBranchName(e.target.value)}
+                      placeholder="New branch…"
+                      disabled={creating}
+                      className="min-w-0 flex-1 bg-transparent px-1 py-0.5 text-[11px] text-foreground placeholder:text-muted-foreground/30 focus:outline-none"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleCreateBranch();
+                      }}
+                    />
+                    {newBranchName.trim() && (
+                      <>
                         <button
                           type="button"
-                          onClick={handleCreate}
-                          disabled={!newName.trim() || creating}
-                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+                          onClick={handleCreateWorktreeFromInput}
+                          disabled={creating}
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/30 transition-colors hover:bg-muted hover:text-foreground"
+                          title="Create as worktree &amp; open"
+                        >
+                          <FolderTree className="size-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCreateBranch}
+                          disabled={creating}
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/30 transition-colors hover:bg-muted hover:text-foreground"
+                          title="Create &amp; checkout branch"
                         >
                           <Check className="size-3" />
                         </button>
-                      </div>
-                      <label className="mt-1 flex cursor-pointer items-center gap-1.5 px-0.5 py-0.5 text-[11px] text-muted-foreground/50 hover:text-muted-foreground/80">
-                        <input
-                          type="checkbox"
-                          checked={openAsWorktree}
-                          onChange={(e) => setOpenAsWorktree(e.target.checked)}
-                          className="size-3 rounded border-muted-foreground/30 accent-foreground"
-                        />
-                        <FolderTree className="size-3" />
-                        <span>Open as worktree in new session</span>
-                      </label>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[12px] text-muted-foreground/50 outline-none transition-colors hover:bg-muted hover:text-foreground"
-                      onClick={() => {
-                        setShowCreate(true);
-                        setOpenAsWorktree(false);
-                      }}
-                    >
-                      <Plus className="size-3 shrink-0" />
-                      <span>Create Branch</span>
-                    </button>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </>
               )}
 
