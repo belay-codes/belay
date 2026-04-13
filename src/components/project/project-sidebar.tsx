@@ -11,11 +11,14 @@ import {
   Trash2,
   Loader2,
   Circle,
+  Globe,
 } from "lucide-react";
+import belayIcon from "/Belay.svg";
 import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
 import { useSessionStatusRead } from "@/stores/session-status-store";
 import { GroupDialog } from "./group-dialog";
+import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
 import type { Project } from "@/types/project";
 
 // ── Persisted expanded state ─────────────────────────────────────────
@@ -107,6 +110,7 @@ export function ProjectSidebar() {
     null,
   );
   const [groupDialogKey, setGroupDialogKey] = useState(0);
+  const [showRegistry, setShowRegistry] = useState(false);
 
   // Inline rename state for sessions
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
@@ -920,11 +924,32 @@ export function ProjectSidebar() {
   // ── Main render ──────────────────────────────────────────────────
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-border bg-background/50">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
-        <MessageSquare className="size-3.5 text-muted-foreground" />
-        <span className="text-[12px] font-medium tracking-wide text-muted-foreground uppercase">
+    <aside className="flex h-full w-64 shrink-0 flex-col">
+      <div
+        className="flex h-9 select-none items-center gap-2 px-3"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        onDoubleClick={() => window.electronAPI?.maximize()}
+      >
+        <img src={belayIcon} alt="" className="size-5" />
+        <span className="text-[13px] font-medium tracking-tight text-foreground">
+          Belay
+        </span>
+        <div style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <button
+            type="button"
+            onClick={() => setShowRegistry(true)}
+            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Browse agent registry"
+            title="Browse agent registry"
+          >
+            <Globe className="size-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 px-3 pt-1 pb-1.5">
+        <MessageSquare className="size-3 text-muted-foreground" />
+        <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
           Projects
         </span>
         <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
@@ -932,7 +957,6 @@ export function ProjectSidebar() {
         </span>
       </div>
 
-      {/* Project list */}
       <div className="flex-1 overflow-y-auto py-1">
         {openProjects.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
@@ -1065,7 +1089,7 @@ export function ProjectSidebar() {
                   {/* ── Session sub-items ── */}
                   {isExpanded && (
                     <div
-                      className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border/60 pl-2"
+                      className="ml-5 mt-0.5 flex flex-col gap-0.5 border-l border-border/40 pl-2"
                       onDragStart={(e) =>
                         handleSessionListDragStart(e, project.id)
                       }
@@ -1319,7 +1343,7 @@ export function ProjectSidebar() {
       </div>
 
       {/* Open project button */}
-      <div className="border-t border-border p-2">
+      <div className="border-t border-border/30 p-2">
         <Button
           variant="ghost"
           size="sm"
@@ -1354,6 +1378,11 @@ export function ProjectSidebar() {
         initialName={groupDialog?.initialName ?? ""}
         initialColor={groupDialog?.initialColor ?? "#3b82f6"}
         submitLabel={groupDialog?.mode === "edit" ? "Save" : "Create"}
+      />
+
+      <HarnessRegistryDialog
+        open={showRegistry}
+        onClose={() => setShowRegistry(false)}
       />
     </aside>
   );

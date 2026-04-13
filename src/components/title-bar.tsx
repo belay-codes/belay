@@ -173,6 +173,108 @@ export function TitleBar({ projectPath, projectId, sessionId }: TitleBarProps) {
   );
 }
 
+export function WindowControls() {
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    const api = window.electronAPI;
+    if (!api) return;
+    api
+      .isMaximized()
+      .then(setIsMaximized)
+      .catch(() => {});
+    const unsubMaximize = api.onMaximize(() => setIsMaximized(true));
+    const unsubUnmaximize = api.onUnmaximize(() => setIsMaximized(false));
+    return () => {
+      unsubMaximize?.();
+      unsubUnmaximize?.();
+    };
+  }, []);
+
+  const handleMinimize = useCallback(() => {
+    window.electronAPI?.minimize();
+  }, []);
+
+  const handleMaximize = useCallback(() => {
+    window.electronAPI?.maximize();
+  }, []);
+
+  const handleClose = useCallback(() => {
+    window.electronAPI?.close();
+  }, []);
+
+  return (
+    <div className="flex h-9">
+      <button
+        onClick={handleMinimize}
+        className="inline-flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted/60"
+        aria-label="Minimize"
+        type="button"
+      >
+        <Minus className="size-[15px]" strokeWidth={1.8} />
+      </button>
+
+      <button
+        onClick={handleMaximize}
+        className="inline-flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted/60"
+        aria-label={isMaximized ? "Restore" : "Maximize"}
+        type="button"
+      >
+        {isMaximized ? (
+          <RestoreIcon className="size-[15px]" />
+        ) : (
+          <Square className="size-[14px]" strokeWidth={1.6} />
+        )}
+      </button>
+
+      <button
+        onClick={handleClose}
+        className="inline-flex h-full w-[46px] items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white active:bg-destructive/90"
+        aria-label="Close"
+        type="button"
+      >
+        <X className="size-[15px]" strokeWidth={1.8} />
+      </button>
+    </div>
+  );
+}
+
+export function InsetHeader({ projectPath, projectId, sessionId }: TitleBarProps) {
+  const [showSettings, setShowSettings] = useState(false);
+
+  return (
+    <>
+      <div className="flex min-w-0 flex-1 items-center justify-center px-4">
+        <BranchDropdown projectPath={projectPath} projectId={projectId} sessionId={sessionId} />
+      </div>
+
+      <div
+        className="flex items-center gap-0.5"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        <button
+          type="button"
+          onClick={() => setShowSettings(true)}
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Settings"
+          title="Settings"
+        >
+          <Settings className="size-3.5" />
+        </button>
+        <ThemeToggle />
+      </div>
+
+      <div className="w-[138px]" />
+
+      <SettingsDialog
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        onOpenRegistry={() => setShowSettings(false)}
+      />
+    </>
+  );
+}
+
 // ── Branch/worktree dropdown ─────────────────────────────────────────
 
 function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: string; projectId?: string; sessionId?: string }) {

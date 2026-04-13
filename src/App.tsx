@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { TitleBar } from "@/components/title-bar";
+import { TitleBar, WindowControls, InsetHeader } from "@/components/title-bar";
 import { Chat } from "@/components/chat/chat";
 import { ProjectWelcome } from "@/components/project/project-welcome";
 import { ProjectSidebar } from "@/components/project/project-sidebar";
@@ -344,90 +344,106 @@ function AppLayout() {
       id="app-container"
       className="flex h-screen w-screen flex-col bg-background"
     >
-      <TitleBar
-        projectPath={activeSession?.path ?? activeProject?.path}
-        projectId={activeProject?.id}
-        sessionId={activeSession?.id}
-      />
-      <div className="flex min-h-0 flex-1">
+      {/* Window controls — fixed overlay at top-right */}
+      <div className="fixed top-0 right-0 z-50">
+        <WindowControls />
+      </div>
+
+      {/* Unified chrome layer */}
+      <div className="flex flex-1 overflow-hidden bg-background/80 backdrop-blur-sm">
         <ProjectSidebar />
-        {/* Chat area — render every session's chat; only the active one is visible */}
-        <div className="relative min-w-0 flex-1">
-          {openProjects.map((project) =>
-            project.sessions.map((session) => {
-              const isActive =
-                session.id === activeSessionId &&
-                project.id === activeProjectId;
-              const terminalData = sessionTerminals.get(session.id);
-              const isTerminalOpen =
-                !!terminalData && terminalData.tabs.length > 0;
 
-              // Detect WSL from the session's active agent harness.
-              // Spawn options are captured at tab-creation time so that
-              // switching agents later doesn't disrupt a running terminal.
-              const agentHarness = session.agentId
-                ? harnesses.find((h) => h.agentId === session.agentId)
-                : undefined;
-              const spawnOptions: SpawnOptions | undefined =
-                agentHarness?.useWsl
-                  ? {
-                      isWsl: true,
-                      wslDistro: agentHarness.wslDistro || undefined,
-                    }
-                  : undefined;
+        {/* Content column (SidebarInset) */}
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          <header
+            className="flex h-9 shrink-0 select-none items-center px-1"
+            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+            onDoubleClick={() => window.electronAPI?.maximize()}
+          >
+            <InsetHeader
+              projectPath={activeSession?.path ?? activeProject?.path}
+              projectId={activeProject?.id}
+              sessionId={activeSession?.id}
+            />
+          </header>
 
-              const effectivePath = session.path ?? project.path;
+          <div className="flex-1 overflow-hidden p-1 pt-0 pb-4">
+            <div className="relative flex h-full flex-col rounded-xl bg-muted/30 overflow-hidden">
+              {/* Chat area — render every session's chat; only the active one is visible */}
+              {openProjects.map((project) =>
+                project.sessions.map((session) => {
+                  const isActive =
+                    session.id === activeSessionId &&
+                    project.id === activeProjectId;
+                  const terminalData = sessionTerminals.get(session.id);
+                  const isTerminalOpen =
+                    !!terminalData && terminalData.tabs.length > 0;
 
-              return (
-                <div
-                  key={session.id}
-                  className={isActive ? "absolute inset-0 flex" : "hidden"}
-                >
-                  {/* Chat + Terminal column */}
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <Chat
-                      sessionId={session.id}
-                      projectId={project.id}
-                      projectPath={effectivePath}
-                      terminalOpen={isTerminalOpen}
-                      onToggleTerminal={() =>
-                        toggleTerminal(session.id, spawnOptions)
-                      }
-                    />
-                    {isTerminalOpen && (
-                      <TerminalPanel
-                        projectPath={effectivePath}
-                        tabs={terminalData!.tabs}
-                        activeTabId={terminalData!.activeTabId}
-                        onSelectTab={(tabId) => selectTab(session.id, tabId)}
-                        onAddTab={() => addTab(session.id, spawnOptions)}
-                        onCloseTab={(tabId) => closeTab(session.id, tabId)}
-                        onRenameTab={(tabId, label) =>
-                          renameTab(session.id, tabId, label)
+                  // Detect WSL from the session's active agent harness.
+                  // Spawn options are captured at tab-creation time so that
+                  // switching agents later doesn't disrupt a running terminal.
+                  const agentHarness = session.agentId
+                    ? harnesses.find((h) => h.agentId === session.agentId)
+                    : undefined;
+                  const spawnOptions: SpawnOptions | undefined =
+                    agentHarness?.useWsl
+                      ? {
+                          isWsl: true,
+                          wslDistro: agentHarness.wslDistro || undefined,
                         }
-                        onReorderTabs={(fromIndex, toIndex) =>
-                          reorderTabs(session.id, fromIndex, toIndex)
+                      : undefined;
+
+                  const effectivePath = session.path ?? project.path;
+
+                  return (
+                    <div
+                      key={session.id}
+                      className={isActive ? "absolute inset-0 flex flex-col" : "hidden"}
+                    >
+                      <Chat
+                        sessionId={session.id}
+                        projectId={project.id}
+                        projectPath={effectivePath}
+                        terminalOpen={isTerminalOpen}
+                        onToggleTerminal={() =>
+                          toggleTerminal(session.id, spawnOptions)
                         }
                       />
-                    )}
-                  </div>
-
-                  {/* Right sidebar — directory explorer per session */}
-                  {isActive && (
-                    <RightSidebar
-                      isOpen={sessionSidebarOpen.has(session.id)}
-                      onToggle={() => toggleSidebar(session.id)}
-                      activeTab={(sessionSidebarTab.get(session.id) as SidebarTab | undefined) ?? "explorer"}
-                      onTabChange={(tab: string) => setSessionTab(session.id, tab)}
-                      projectPath={effectivePath}
-                      projectName={project.name}
-                    />
-                  )}
-                </div>
-              );
-            }),
-          )}
+                      {isTerminalOpen && (
+                        <TerminalPanel
+                          projectPath={effectivePath}
+                          tabs={terminalData!.tabs}
+                          activeTabId={terminalData!.activeTabId}
+                          onSelectTab={(tabId) => selectTab(session.id, tabId)}
+                          onAddTab={() => addTab(session.id, spawnOptions)}
+                          onCloseTab={(tabId) => closeTab(session.id, tabId)}
+                          onRenameTab={(tabId, label) =>
+                            renameTab(session.id, tabId, label)
+                          }
+                          onReorderTabs={(fromIndex, toIndex) =>
+                            reorderTabs(session.id, fromIndex, toIndex)
+                          }
+                        />
+                      )}
+                    </div>
+                  );
+                }),
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Right sidebar — outside the inset, inside the chrome */}
+        {activeSession && activeProject && (
+          <RightSidebar
+            isOpen={sessionSidebarOpen.has(activeSession.id)}
+            onToggle={() => toggleSidebar(activeSession.id)}
+            activeTab={(sessionSidebarTab.get(activeSession.id) as SidebarTab | undefined) ?? "explorer"}
+            onTabChange={(tab: string) => setSessionTab(activeSession.id, tab)}
+            projectPath={activeSession.path ?? activeProject.path}
+            projectName={activeProject.name}
+          />
+        )}
       </div>
     </div>
   );

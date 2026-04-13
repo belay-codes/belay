@@ -74,11 +74,10 @@ export function RightSidebar({
 
   return (
     <div
-      className="flex h-full shrink-0 border-l border-border/40 transition-[width] duration-200 ease-in-out"
+      className="flex h-full shrink-0 transition-[width] duration-200 ease-in-out"
       style={{ width: isOpen ? SIDEBAR_WIDTH : COLLAPSED_WIDTH }}
     >
-      {/* ── Icon rail ── */}
-      <div className="flex shrink-0 flex-col items-center border-r border-border/40 pt-2" style={{ width: COLLAPSED_WIDTH }}>
+      <div className="flex shrink-0 flex-col items-center justify-end pb-2" style={{ width: COLLAPSED_WIDTH }}>
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -98,7 +97,6 @@ export function RightSidebar({
               title={tab.label}
             >
               <Icon className="size-4" />
-              {/* Tooltip label for collapsed state */}
               {!isOpen && (
                 <span className="pointer-events-none absolute left-full ml-2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-[11px] font-medium text-popover-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100" style={{ zIndex: 50 }}>
                   {tab.label}
@@ -109,7 +107,6 @@ export function RightSidebar({
         })}
       </div>
 
-      {/* ── Content panel ── */}
       <div
         className={[
           "flex min-w-0 flex-1 flex-col overflow-hidden",
@@ -119,7 +116,6 @@ export function RightSidebar({
           "transition-opacity duration-200",
         ].join(" ")}
       >
-        {/* ── Tab content ── */}
         <div className="flex-1 overflow-hidden">
           {activeTab === "explorer" && projectPath && (
             <FileExplorer rootPath={projectPath} rootLabel={projectName} />
