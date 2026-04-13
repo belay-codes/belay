@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
-  PanelRightClose,
   FolderTree,
   GitBranch,
 } from "lucide-react";
@@ -109,23 +108,6 @@ export function RightSidebar({
           "transition-opacity duration-200",
         ].join(" ")}
       >
-        {/* ── Header ── */}
-        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/40 px-2">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
-            {TABS.find((t) => t.id === activeTab)?.label}
-          </span>
-          <div className="flex-1" />
-          <button
-            type="button"
-            onClick={onToggle}
-            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
-          >
-            <PanelRightClose className="size-3.5" />
-          </button>
-        </div>
-
         {/* ── Tab content ── */}
         <div className="flex-1 overflow-hidden">
           {activeTab === "explorer" && projectPath && (
