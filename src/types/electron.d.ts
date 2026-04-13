@@ -123,6 +123,26 @@ export interface ElectronAPI {
     callback: (request: AcpPermissionRequest) => void,
   ) => () => void;
   acpRespondPermission: (requestId: string, optionId: string) => Promise<void>;
+
+  // Terminal
+  terminalSpawn: (
+    id: string,
+    cwd?: string,
+    options?: {
+      shell?: string;
+      args?: string[];
+      isWsl?: boolean;
+      wslDistro?: string;
+    },
+  ) => Promise<void>;
+  terminalWrite: (id: string, data: string) => void;
+  terminalResize: (id: string, cols: number, rows: number) => void;
+  terminalKill: (id: string) => void;
+  onTerminalData: (id: string, callback: (data: string) => void) => () => void;
+  onTerminalExit: (
+    id: string,
+    callback: (exitCode: number) => void,
+  ) => () => void;
 }
 
 declare global {

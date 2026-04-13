@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { ChevronDown, Cpu, Zap } from "lucide-react";
+import { ChevronDown, Cpu, Terminal, Zap } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
 import { PermissionDialog } from "./permission-dialog";
@@ -144,9 +144,17 @@ interface ChatProps {
   sessionId: string;
   projectId: string;
   projectPath?: string;
+  terminalOpen?: boolean;
+  onToggleTerminal?: () => void;
 }
 
-export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
+export function Chat({
+  sessionId,
+  projectId,
+  projectPath,
+  terminalOpen = false,
+  onToggleTerminal,
+}: ChatProps) {
   // ── Persisted message state ──────────────────────────────────────
   const { messages, setMessages, saveMessages, isLoaded } =
     useSessionMessages(sessionId);
@@ -1126,7 +1134,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // ── Empty state ──────────────────────────────────────────────────
   if (messages.length === 0 && !isThinking) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex-1" />
 
         {/* Agent selector + input pinned to bottom */}
@@ -1135,6 +1143,23 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
             <div className="mb-2 flex items-center gap-2">
               {agentSelector}
               {modeSelector}
+              <div className="flex-1" />
+              {onToggleTerminal && (
+                <button
+                  type="button"
+                  onClick={onToggleTerminal}
+                  className={[
+                    "inline-flex size-7 items-center justify-center rounded-md transition-colors",
+                    terminalOpen
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ].join(" ")}
+                  aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
+                  title={terminalOpen ? "Close terminal" : "Open terminal"}
+                >
+                  <Terminal className="size-3.5" />
+                </button>
+              )}
             </div>
             <ChatInput
               onSend={handleSend}
@@ -1162,7 +1187,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   const isStreaming = messages.some((m) => m.isStreaming);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Message list */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 py-6">
@@ -1212,6 +1237,23 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           <div className="mb-2 flex items-center gap-2">
             {agentSelector}
             {modeSelector}
+            <div className="flex-1" />
+            {onToggleTerminal && (
+              <button
+                type="button"
+                onClick={onToggleTerminal}
+                className={[
+                  "inline-flex size-7 items-center justify-center rounded-md transition-colors",
+                  terminalOpen
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                ].join(" ")}
+                aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
+                title={terminalOpen ? "Close terminal" : "Open terminal"}
+              >
+                <Terminal className="size-3.5" />
+              </button>
+            )}
           </div>
           <ChatInput
             onSend={handleSend}
