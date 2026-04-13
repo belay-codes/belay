@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Minus, Square, X, Globe, Settings, GitBranch, Plus, Check, FolderTree, MoreHorizontal, Trash2, SplitSquareHorizontal } from "lucide-react";
+import { Minus, Square, X, Globe, Settings, GitBranch, GitFork, Plus, Check, MoreHorizontal, Trash2, SplitSquareHorizontal } from "lucide-react";
 import { Menu } from "@base-ui/react/menu";
 import belayIcon from "/Belay.svg";
 
@@ -283,7 +283,7 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                     : "border-transparent text-muted-foreground/40 hover:text-muted-foreground/70",
                 ].join(" ")}
               >
-                <FolderTree className="size-3" />
+                <GitFork className="size-3" />
                 Worktrees
               </button>
             </div>
@@ -318,7 +318,7 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                           className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/20 transition-colors hover:bg-muted hover:text-foreground"
                           title={`Create worktree for ${b.name}`}
                         >
-                          <FolderTree className="size-3" />
+                          <GitFork className="size-3" />
                         </button>
                       )}
                     </Menu.Item>
@@ -352,7 +352,7 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                           className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/30 transition-colors hover:bg-muted hover:text-foreground"
                           title="Create as worktree &amp; open"
                         >
-                          <FolderTree className="size-3" />
+                          <GitFork className="size-3" />
                         </button>
                         <button
                           type="button"
@@ -396,7 +396,7 @@ function BranchDropdown({ projectPath, projectId, sessionId }: { projectPath?: s
                             }
                           }}
                         >
-                          <FolderTree className="size-3 shrink-0 text-muted-foreground/40" />
+                          <GitFork className="size-3 shrink-0 text-muted-foreground/40" />
                           <div className="min-w-0 flex-1">
                             <span className="block truncate">{wt.ref}</span>
                             <span className="block truncate text-[10px] text-muted-foreground/30">
