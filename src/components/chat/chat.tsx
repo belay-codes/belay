@@ -1212,7 +1212,8 @@ export function Chat({
         </div>
       </div>
 
-      {/* Agent selector + input pinned to bottom */}
+      {/* Gradient fade + prompt box pinned to bottom */}
+      <div className="pointer-events-none h-8 shrink-0 bg-gradient-to-b from-transparent to-muted/30" />
       <div className="bg-muted/30 px-4 pb-3">
         <div className="mx-auto max-w-4xl">
           <ChatInput
