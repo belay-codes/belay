@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
 
 let mainWindow: BrowserWindow | null = null;
+let checkInterval: ReturnType<typeof setInterval> | null = null;
 
 // ── Cached renderer preference ──────────────────────────────────────
 // Stored in localStorage on the renderer side; sent to main via IPC.
@@ -26,10 +27,18 @@ function sendStatus(status: UpdateStatus): void {
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function isBreakingChange(currentVersion: string, newVersion: string): boolean {
-  const currentMajor = parseInt(currentVersion.replace(/^v/, "").split(".")[0], 10);
-  const newMajor = parseInt(newVersion.replace(/^v/, "").split(".")[0], 10);
-  if (isNaN(currentMajor) || isNaN(newMajor)) return false;
-  return newMajor > currentMajor;
+  const cur = currentVersion.replace(/^v/, "").split(".").map(Number);
+  const next = newVersion.replace(/^v/, "").split(".").map(Number);
+  if (cur.some(isNaN) || next.some(isNaN)) return false;
+
+  // 1.x → 2.x is always breaking
+  if (next[0] > cur[0]) return true;
+
+  // Per semver, 0.x treats minor bumps as breaking:
+  //   0.1.0 → 0.2.0 is breaking, 0.1.0 → 0.1.1 is not.
+  if (cur[0] === 0 && next[0] === 0 && next[1] > cur[1]) return true;
+
+  return false;
 }
 
 function extractReleaseNotes(info: UpdateInfo): string | undefined {
@@ -135,13 +144,17 @@ export function initUpdater(window: BrowserWindow): void {
 
   // ── Periodic check every 4 hours ──────────────────────────────
 
-  setInterval(() => {
+  checkInterval = setInterval(() => {
     autoUpdater.checkForUpdates().catch(() => {});
   }, 4 * 60 * 60 * 1000);
 
   // ── Cleanup ────────────────────────────────────────────────────
 
   mainWindow.on("closed", () => {
+    if (checkInterval !== null) {
+      clearInterval(checkInterval);
+      checkInterval = null;
+    }
     mainWindow = null;
   });
 }
