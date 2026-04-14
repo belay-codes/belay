@@ -43,15 +43,11 @@ jobs:
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout
-        if: steps.release.outputs.releases_created == 'true'
-        uses: actions/checkout@v4
-
       - name: Trigger build workflow
         if: steps.release.outputs.releases_created == 'true'
         run: |
-          gh workflow run build-release.yml \
-            --ref main \
-            -f tag="${{ steps.release.outputs.tag_name }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/build-release.yml/dispatches" \
+            -d '{"ref":"main","inputs":{"tag":"${{ steps.release.outputs.tag_name }}"}}'
