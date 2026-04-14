@@ -1134,7 +1134,7 @@ export function Chat({
         <div className="flex-1" />
 
         {/* Agent selector + input pinned to bottom */}
-        <div className="bg-muted/30 px-4 pb-3">
+        <div className="bg-muted px-4 pb-3">
           <div className="mx-auto max-w-4xl">
             <ChatInput
               onSend={handleSend}
@@ -1212,11 +1212,11 @@ export function Chat({
           </div>
         </div>
         </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-muted/30" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-muted" />
       </div>
 
       {/* Prompt box pinned to bottom */}
-      <div className="bg-muted/30 px-4 pb-3">
+      <div className="bg-muted px-4 pb-3">
         <div className="mx-auto max-w-4xl">
           <ChatInput
             onSend={handleSend}
