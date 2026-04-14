@@ -1,0 +1,26 @@
+{
+  "name": "belay-code",
+  "version": "0.1.0",
+  "description": "Belay – a multi-session AI coding IDE",
+  "author": "Belay Contributors",
+  "license": "MIT",
+  "bin": {
+    "belay": "./bin/belay.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "files": [
+    "bin/**/*",
+    "scripts/**/*"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/belay-codes/belay.git",
+    "directory": "packages/belay-code"
+  },
+  "homepage": "https://github.com/belay-codes/belay#readme"
+}
