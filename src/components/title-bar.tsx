@@ -78,7 +78,7 @@ export function TitleBar({ projectPath, projectId, sessionId }: TitleBarProps) {
     >
       {/* Left — app title */}
       <div className="flex items-center gap-2 pl-3.5">
-        <img src={belayIcon} alt="" className="size-5" />
+        <img src={belayIcon} alt="" className="size-5 dark:invert" />
         <span className="text-[13px] font-medium tracking-tight text-foreground">
           Belay
         </span>
@@ -215,7 +215,7 @@ export function InsetHeader({ projectPath, projectId, sessionId }: TitleBarProps
     >
       {/* Left — app title */}
       <div className="flex items-center gap-2 pl-3">
-        <img src={belayIcon} alt="" className="size-5" />
+        <img src={belayIcon} alt="" className="size-5 dark:invert" />
         <span className="text-[13px] font-medium tracking-tight text-foreground">
           Belay
         </span>
