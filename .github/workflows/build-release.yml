@@ -40,46 +40,67 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Resolve release tag
-        id: tag
+      - name: Resolve ref to check out
+        id: ref
         shell: node {0}
         run: |
-          const assert = require('assert');
-          const https = require('https');
           const fs = require('fs');
+          const https = require('https');
 
+          const useMain = '${{ inputs.use_main }}' === 'true';
           const releaseTag = '${{ github.event.release.tag_name }}';
           const inputTag = '${{ inputs.tag }}';
 
-          if (releaseTag) {
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${releaseTag}\n`);
-            console.log(`tag=${releaseTag} (from release event)`);
+          // 1. Explicit use_main flag — just use main
+          if (useMain) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'ref=main\n');
+            console.log('ref=main (use_main flag)');
             return;
           }
 
-          if (inputTag) {
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${inputTag}\n`);
-            console.log(`tag=${inputTag} (from workflow_dispatch input)`);
+          // 2. Release event or explicit tag input
+          const tag = releaseTag || inputTag;
+          if (tag) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `ref=${tag}\n`);
+            console.log(`ref=${tag} (from ${releaseTag ? 'release event' : 'input'})`);
             return;
           }
 
-          // workflow_run — fetch the latest release tag from the GitHub API
+          // 3. workflow_run — fetch latest release tag via GitHub API
           const url = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/releases?per_page=1`;
-          https.get(url, { headers: { 'User-Agent': 'actions', Authorization: `token ${process.env.GITHUB_TOKEN}` } }, (res) => {
+          const options = {
+            headers: {
+              'User-Agent': 'actions',
+              Authorization: `token ${process.env.GITHUB_TOKEN}`,
+            },
+          };
+
+          https.get(url, options, (res) => {
             let body = '';
-            res.on('data', (c) => (body += c));
+            res.on('data', (chunk) => (body += chunk));
             res.on('end', () => {
-              const releases = JSON.parse(body);
-              assert(Array.isArray(releases) && releases.length > 0, 'No releases found');
-              const tag = releases[0].tag_name;
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\n`);
-              console.log(`tag=${tag} (from GitHub API)`);
+              try {
+                const releases = JSON.parse(body);
+                if (!Array.isArray(releases) || releases.length === 0) {
+                  console.error('No releases found');
+                  process.exit(1);
+                }
+                const t = releases[0].tag_name;
+                fs.appendFileSync(process.env.GITHUB_OUTPUT, `ref=${t}\n`);
+                console.log(`ref=${t} (from GitHub API)`);
+              } catch (err) {
+                console.error('Failed to parse releases:', err.message);
+                process.exit(1);
+              }
             });
+          }).on('error', (err) => {
+            console.error('API request failed:', err.message);
+            process.exit(1);
           });
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.use_main && 'main' || steps.tag.outputs.tag }}
+          ref: ${{ steps.ref.outputs.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -128,43 +149,64 @@ jobs:
       id-token: write
 
     steps:
-      - name: Resolve release tag
-        id: tag
+      - name: Resolve ref to check out
+        id: ref
         shell: node {0}
         run: |
-          const https = require('https');
           const fs = require('fs');
+          const https = require('https');
 
+          const useMain = '${{ inputs.use_main }}' === 'true';
           const releaseTag = '${{ github.event.release.tag_name }}';
           const inputTag = '${{ inputs.tag }}';
 
-          if (releaseTag) {
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${releaseTag}\n`);
-            console.log(`tag=${releaseTag} (from release event)`);
+          if (useMain) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'ref=main\n');
+            console.log('ref=main (use_main flag)');
             return;
           }
 
-          if (inputTag) {
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${inputTag}\n`);
-            console.log(`tag=${inputTag} (from workflow_dispatch input)`);
+          const tag = releaseTag || inputTag;
+          if (tag) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `ref=${tag}\n`);
+            console.log(`ref=${tag} (from ${releaseTag ? 'release event' : 'input'})`);
             return;
           }
 
           const url = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/releases?per_page=1`;
-          https.get(url, { headers: { 'User-Agent': 'actions', Authorization: `token ${process.env.GITHUB_TOKEN}` } }, (res) => {
+          const options = {
+            headers: {
+              'User-Agent': 'actions',
+              Authorization: `token ${process.env.GITHUB_TOKEN}`,
+            },
+          };
+
+          https.get(url, options, (res) => {
             let body = '';
-            res.on('data', (c) => (body += c));
+            res.on('data', (chunk) => (body += chunk));
             res.on('end', () => {
-              const releases = JSON.parse(body);
-              const tag = releases[0].tag_name;
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\n`);
-              console.log(`tag=${tag} (from GitHub API)`);
+              try {
+                const releases = JSON.parse(body);
+                if (!Array.isArray(releases) || releases.length === 0) {
+                  console.error('No releases found');
+                  process.exit(1);
+                }
+                const t = releases[0].tag_name;
+                fs.appendFileSync(process.env.GITHUB_OUTPUT, `ref=${t}\n`);
+                console.log(`ref=${t} (from GitHub API)`);
+              } catch (err) {
+                console.error('Failed to parse releases:', err.message);
+                process.exit(1);
+              }
             });
+          }).on('error', (err) => {
+            console.error('API request failed:', err.message);
+            process.exit(1);
           });
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.use_main && 'main' || steps.tag.outputs.tag }}
+          ref: ${{ steps.ref.outputs.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -174,7 +216,8 @@ jobs:
 
       - name: Sync package version to release tag
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
+          # Strip leading 'v' or 'belay-v' from the tag to get a semver version
+          TAG="${{ steps.ref.outputs.ref }}"
           VERSION="${TAG#belay-v}"
           VERSION="${VERSION#v}"
           echo "Setting belay-app version to $VERSION"
