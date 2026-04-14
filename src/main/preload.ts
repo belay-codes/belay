@@ -1,5 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+// ── Types ──────────────────────────────────────────────────────────────
+
+export type UpdateStatus =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "available"; version: string; breaking: boolean; releaseNotes?: string }
+  | { state: "not-available" }
+  | { state: "downloading"; progress: { percent: number } }
+  | { state: "downloaded"; version: string }
+  | { state: "error"; message: string };
+
 contextBridge.exposeInMainWorld("electronAPI", {
   // App info
   appVersion: () => ipcRenderer.invoke("app:version"),
@@ -221,5 +232,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     };
     ipcRenderer.on("terminal:exit", handler);
     return () => ipcRenderer.removeListener("terminal:exit", handler);
+  },
+
+  // Auto-updater
+  updaterSetMode: (mode: "auto" | "manual") => ipcRenderer.send("updater:setMode", mode),
+  updaterCheckForUpdates: () => ipcRenderer.invoke("updater:checkForUpdates"),
+  updaterDownloadUpdate: () => ipcRenderer.invoke("updater:downloadUpdate"),
+  updaterQuitAndInstall: () => ipcRenderer.invoke("updater:quitAndInstall"),
+  updaterOnStatus: (callback: (status: UpdateStatus) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      status: UpdateStatus,
+    ) => callback(status);
+    ipcRenderer.on("updater:status", handler);
+    return () => ipcRenderer.removeListener("updater:status", handler);
   },
 });

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { useProjectStore } from "@/stores/project-store";
 import { useSessionStatusRead } from "@/stores/session-status-store";
 import { GroupDialog } from "./group-dialog";
+import { UpdateNotification } from "../updater/update-notification";
 import { HarnessRegistryDialog } from "@/components/harness/harness-registry-dialog";
 import type { Project } from "@/types/project";
 
@@ -1349,6 +1350,9 @@ export function ProjectSidebar() {
           </div>
         )}
       </div>
+
+      {/* Update notification */}
+      <UpdateNotification />
 
       {/* Open project button */}
       <div className="p-2">

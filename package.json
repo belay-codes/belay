@@ -25,10 +25,65 @@
     ],
     "icon": "public/Belay.ico",
     "forceCodeSigning": false,
+    "publish": {
+      "provider": "github",
+      "owner": "belay-codes",
+      "repo": "belay"
+    },
+    "mac": {
+      "icon": "public/Belay.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "public/Belay.png",
+      "category": "Development",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
     "win": {
       "target": [
         {
           "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "x64"
           ]
@@ -45,6 +100,7 @@
     "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.3",
     "lucide-react": "^1.8.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.4",

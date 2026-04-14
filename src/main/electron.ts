@@ -7,6 +7,7 @@ import type { NativeImage } from "electron";
 // taskbar than PNG, especially with frameless windows.
 const iconFilename = process.platform === "win32" ? "Belay.ico" : "Belay.png";
 
+import { initUpdater } from "./updater.js";
 import { connectionManager } from "./acp/connection-manager.js";
 import { terminalManager } from "./terminal.js";
 import {
@@ -502,6 +503,9 @@ app.whenReady().then(() => {
   if (mainWindow) {
     mainWindow.on("maximize", broadcastMaximizeState);
     mainWindow.on("unmaximize", broadcastMaximizeState);
+
+    // Initialize auto-updater (only active in packaged builds)
+    initUpdater(mainWindow);
   }
 
   app.on("activate", () => {
