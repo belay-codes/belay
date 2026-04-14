@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   FolderTree,
   GitBranch,
+  Terminal,
 } from "lucide-react";
 import { FileExplorer } from "@/components/file-explorer/file-explorer";
 import { GitPanel } from "@/components/git/git-panel";
@@ -36,6 +37,10 @@ export interface RightSidebarProps {
   projectPath?: string;
   /** Project display name for the header. */
   projectName?: string;
+  /** Whether the terminal panel is currently open. */
+  terminalOpen?: boolean;
+  /** Callback to toggle the terminal panel open/closed. */
+  onToggleTerminal?: () => void;
 }
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -52,6 +57,8 @@ export function RightSidebar({
   onTabChange,
   projectPath,
   projectName,
+  terminalOpen = false,
+  onToggleTerminal,
 }: RightSidebarProps) {
   const [internalTab, setInternalTab] = useState<SidebarTab>("explorer");
   const activeTab = controlledTab ?? internalTab;
@@ -106,6 +113,27 @@ export function RightSidebar({
               </button>
             );
           })}
+          {onToggleTerminal && (
+            <button
+              type="button"
+              onClick={onToggleTerminal}
+              className={[
+                "group relative flex size-8 items-center justify-center rounded-md transition-colors",
+                terminalOpen
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-muted/30",
+              ].join(" ")}
+              aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
+              title={terminalOpen ? "Close terminal" : "Open terminal"}
+            >
+              <Terminal className="size-4" />
+              {!isOpen && (
+                <span className="pointer-events-none absolute left-full ml-2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-[11px] font-medium text-popover-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100" style={{ zIndex: 50 }}>
+                  Terminal
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         <div

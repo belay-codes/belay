@@ -394,10 +394,6 @@ function AppLayout() {
                           sessionId={session.id}
                           projectId={project.id}
                           projectPath={effectivePath}
-                          terminalOpen={isTerminalOpen}
-                          onToggleTerminal={() =>
-                            toggleTerminal(session.id, spawnOptions)
-                          }
                         />
                       </div>
                     );
@@ -449,16 +445,34 @@ function AppLayout() {
         </div>
 
         {/* Right sidebar — outside the inset, inside the chrome */}
-        {activeSession && activeProject && (
-          <RightSidebar
-            isOpen={sessionSidebarOpen.has(activeSession.id)}
-            onToggle={() => toggleSidebar(activeSession.id)}
-            activeTab={(sessionSidebarTab.get(activeSession.id) as SidebarTab | undefined) ?? "explorer"}
-            onTabChange={(tab: string) => setSessionTab(activeSession.id, tab)}
-            projectPath={activeSession.path ?? activeProject.path}
-            projectName={activeProject.name}
-          />
-        )}
+        {activeSession && activeProject && (() => {
+          const terminalData = sessionTerminals.get(activeSession.id);
+          const isTerminalOpen =
+            !!terminalData && terminalData.tabs.length > 0;
+          const agentHarness = activeSession.agentId
+            ? harnesses.find((h) => h.agentId === activeSession.agentId)
+            : undefined;
+          const spawnOptions: SpawnOptions | undefined =
+            agentHarness?.useWsl
+              ? {
+                  isWsl: true,
+                  wslDistro: agentHarness.wslDistro || undefined,
+                }
+              : undefined;
+
+          return (
+            <RightSidebar
+              isOpen={sessionSidebarOpen.has(activeSession.id)}
+              onToggle={() => toggleSidebar(activeSession.id)}
+              activeTab={(sessionSidebarTab.get(activeSession.id) as SidebarTab | undefined) ?? "explorer"}
+              onTabChange={(tab: string) => setSessionTab(activeSession.id, tab)}
+              projectPath={activeSession.path ?? activeProject.path}
+              projectName={activeProject.name}
+              terminalOpen={isTerminalOpen}
+              onToggleTerminal={() => toggleTerminal(activeSession.id, spawnOptions)}
+            />
+          );
+        })()}
       </div>
     </div>
   );

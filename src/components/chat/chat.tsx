@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { ChevronDown, Cpu, Terminal, Zap } from "lucide-react";
+import { ChevronDown, Cpu, Zap } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { ChatInput } from "./chat-input";
 import { PermissionDialog } from "./permission-dialog";
@@ -144,16 +144,12 @@ interface ChatProps {
   sessionId: string;
   projectId: string;
   projectPath?: string;
-  terminalOpen?: boolean;
-  onToggleTerminal?: () => void;
 }
 
 export function Chat({
   sessionId,
   projectId,
   projectPath,
-  terminalOpen = false,
-  onToggleTerminal,
 }: ChatProps) {
   // ── Persisted message state ──────────────────────────────────────
   const { messages, setMessages, saveMessages, isLoaded } =
@@ -1144,22 +1140,6 @@ export function Chat({
               {agentSelector}
               {modeSelector}
               <div className="flex-1" />
-              {onToggleTerminal && (
-                <button
-                  type="button"
-                  onClick={onToggleTerminal}
-                  className={[
-                    "inline-flex size-7 items-center justify-center rounded-md transition-colors",
-                    terminalOpen
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  ].join(" ")}
-                  aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
-                  title={terminalOpen ? "Close terminal" : "Open terminal"}
-                >
-                  <Terminal className="size-3.5" />
-                </button>
-              )}
             </div>
             <ChatInput
               onSend={handleSend}
@@ -1238,22 +1218,6 @@ export function Chat({
             {agentSelector}
             {modeSelector}
             <div className="flex-1" />
-            {onToggleTerminal && (
-              <button
-                type="button"
-                onClick={onToggleTerminal}
-                className={[
-                  "inline-flex size-7 items-center justify-center rounded-md transition-colors",
-                  terminalOpen
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                ].join(" ")}
-                aria-label={terminalOpen ? "Close terminal" : "Open terminal"}
-                title={terminalOpen ? "Close terminal" : "Open terminal"}
-              >
-                <Terminal className="size-3.5" />
-              </button>
-            )}
           </div>
           <ChatInput
             onSend={handleSend}
