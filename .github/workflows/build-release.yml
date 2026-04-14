@@ -61,3 +61,36 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+  publish-npm:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Sync package version to release tag
+        run: |
+          # Strip leading 'v' or 'belay-v' from the tag to get a semver version
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#belay-v}"
+          VERSION="${VERSION#v}"
+          echo "Setting belay-code version to $VERSION"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('packages/belay-code/package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('packages/belay-code/package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Publish to npm
+        run: npm publish --access public
+        working-directory: packages/belay-code
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
