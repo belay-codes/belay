@@ -23,12 +23,15 @@
     "files": [
       "dist/**/*"
     ],
+    "icon": "public/Belay.ico",
     "forceCodeSigning": false,
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     }
