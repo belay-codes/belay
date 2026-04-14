@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.4](https://github.com/belay-codes/belay/compare/belay-v0.3.3...belay-v0.3.4) (2026-04-14)
+
+
+### Bug Fixes
+
+* **ci:** add actions:write permission to dispatch build workflow ([2fee8ce](https://github.com/belay-codes/belay/commit/2fee8ce98a63d9010d84a57c5046d378295c1ba7))
+* **ci:** use curl API call instead of gh CLI to trigger build workflow ([1c6a0ce](https://github.com/belay-codes/belay/commit/1c6a0ce3c233ce3092cbef33cae3781de711380c))
+
 ## [0.3.3](https://github.com/belay-codes/belay/compare/belay-v0.3.2...belay-v0.3.3) (2026-04-14)
 
 
