@@ -1,15 +1,22 @@
 import { useEffect, useState, useCallback } from "react";
-import { Download, RefreshCw, AlertCircle, ArrowUpCircle } from "lucide-react";
+import {
+  Download,
+  RefreshCw,
+  AlertCircle,
+  ArrowUpCircle,
+  AlertTriangle,
+} from "lucide-react";
+import { getAutoUpdate } from "@/lib/app-settings";
 
 // ── Types (mirrors preload.ts UpdateStatus) ──────────────────────────
 
 type UpdateStatus =
   | { state: "idle" }
   | { state: "checking" }
-  | { state: "available"; info: { version: string; releaseNotes?: string } }
+  | { state: "available"; version: string; breaking: boolean; releaseNotes?: string }
   | { state: "not-available" }
   | { state: "downloading"; progress: { percent: number } }
-  | { state: "downloaded"; info: { version: string } }
+  | { state: "downloaded"; version: string }
   | { state: "error"; message: string };
 
 // ── Component ────────────────────────────────────────────────────────
@@ -23,15 +30,26 @@ export function UpdateNotification() {
     return () => cleanup?.();
   }, []);
 
+  // Sync the user's auto-update preference from localStorage to the
+  // main process so the updater knows whether to auto-download.
+  useEffect(() => {
+    const mode = getAutoUpdate();
+    window.electronAPI?.updaterSetMode(mode);
+  }, []);
+
   // Reset dismissed state when a new update appears
   useEffect(() => {
-    if (status.state === "downloaded") {
+    if (status.state === "downloaded" || status.state === "available") {
       setDismissed(false);
     }
   }, [status.state]);
 
   const handleInstall = useCallback(() => {
     window.electronAPI?.updaterQuitAndInstall();
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    window.electronAPI?.updaterDownloadUpdate();
   }, []);
 
   const handleCheck = useCallback(() => {
@@ -55,7 +73,7 @@ export function UpdateNotification() {
               Update ready
             </p>
             <p className="mt-0.5 text-[10px] text-green-300/70">
-              v{status.info.version} will be installed on restart
+              v{status.version} will be installed on restart
             </p>
             <button
               onClick={handleInstall}
@@ -92,16 +110,40 @@ export function UpdateNotification() {
     );
   }
 
-  // ── Available ────────────────────────────────────────────────────
+  // ── Available — waiting for user to download ─────────────────────
+  // Shown when auto-download is disabled (manual mode) or when the
+  // update is a major version bump (breaking change).
 
   if (status.state === "available") {
     return (
       <div className="mx-2 mb-1 rounded-lg border border-border/50 bg-muted/50 p-2.5">
-        <div className="flex items-center gap-2">
-          <Download className="size-3.5 shrink-0 text-primary" />
-          <p className="text-[11px] text-muted-foreground">
-            Update to v{status.info.version} downloading…
-          </p>
+        <div className="flex items-start gap-2">
+          {status.breaking ? (
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+          ) : (
+            <Download className="mt-0.5 size-3.5 shrink-0 text-primary" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium text-foreground">
+              Update available — v{status.version}
+            </p>
+            {status.breaking && (
+              <p className="mt-1 text-[10px] text-amber-400/90">
+                This is a major update with breaking changes. Back up your
+                projects before installing.
+              </p>
+            )}
+            <button
+              onClick={handleDownload}
+              className={`mt-2 w-full rounded-md px-2 py-1 text-[11px] font-medium text-white transition-colors ${
+                status.breaking
+                  ? "bg-amber-600 hover:bg-amber-500"
+                  : "bg-primary hover:bg-primary/90"
+              }`}
+            >
+              {status.breaking ? "Download (breaking)" : "Download Update"}
+            </button>
+          </div>
         </div>
       </div>
     );

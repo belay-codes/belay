@@ -1,21 +1,42 @@
-import { BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater, type UpdateInfo } from "electron-updater";
 
 let mainWindow: BrowserWindow | null = null;
+
+// ── Cached renderer preference ──────────────────────────────────────
+// Stored in localStorage on the renderer side; sent to main via IPC.
+
+let updateMode: "auto" | "manual" = "auto";
 
 // ── State broadcast to renderer ────────────────────────────────────
 
 export type UpdateStatus =
   | { state: "idle" }
   | { state: "checking" }
-  | { state: "available"; info: { version: string; releaseNotes?: string } }
+  | { state: "available"; version: string; breaking: boolean; releaseNotes?: string }
   | { state: "not-available" }
   | { state: "downloading"; progress: { percent: number } }
-  | { state: "downloaded"; info: { version: string } }
+  | { state: "downloaded"; version: string }
   | { state: "error"; message: string };
 
 function sendStatus(status: UpdateStatus): void {
   mainWindow?.webContents.send("updater:status", status);
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function isBreakingChange(currentVersion: string, newVersion: string): boolean {
+  const currentMajor = parseInt(currentVersion.replace(/^v/, "").split(".")[0], 10);
+  const newMajor = parseInt(newVersion.replace(/^v/, "").split(".")[0], 10);
+  if (isNaN(currentMajor) || isNaN(newMajor)) return false;
+  return newMajor > currentMajor;
+}
+
+function extractReleaseNotes(info: UpdateInfo): string | undefined {
+  const notes = info.releaseNotes;
+  if (typeof notes === "string") return notes;
+  if (Array.isArray(notes)) return notes.map((n) => n.note).join("\n");
+  return undefined;
 }
 
 // ── Setup ──────────────────────────────────────────────────────────
@@ -23,13 +44,11 @@ function sendStatus(status: UpdateStatus): void {
 export function initUpdater(window: BrowserWindow): void {
   mainWindow = window;
 
-  // Don't check for updates in development
-  if (!window.webContents.session || !require("electron").app.isPackaged) {
-    return;
-  }
+  // Only run in packaged builds
+  if (!app.isPackaged) return;
 
-  // Configure auto-updater
-  autoUpdater.autoDownload = true;
+  // We control downloads manually so we can gate on user preference
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
 
   // ── Events ─────────────────────────────────────────────────────
@@ -39,18 +58,23 @@ export function initUpdater(window: BrowserWindow): void {
   });
 
   autoUpdater.on("update-available", (info: UpdateInfo) => {
+    const breaking = isBreakingChange(app.getVersion(), info.version);
+
     sendStatus({
       state: "available",
-      info: {
-        version: info.version,
-        releaseNotes:
-          typeof info.releaseNotes === "string"
-            ? info.releaseNotes
-            : Array.isArray(info.releaseNotes)
-              ? info.releaseNotes.map((n) => n.note).join("\n")
-              : undefined,
-      },
+      version: info.version,
+      breaking,
+      releaseNotes: extractReleaseNotes(info),
     });
+
+    // Auto-download only when the user has opted in AND it's not a
+    // breaking change.  Breaking changes always require explicit user
+    // consent so they have a chance to back up first.
+    if (updateMode === "auto" && !breaking) {
+      autoUpdater.downloadUpdate().catch(() => {
+        // download-progress / error events handle the rest
+      });
+    }
   });
 
   autoUpdater.on("update-not-available", () => {
@@ -67,7 +91,7 @@ export function initUpdater(window: BrowserWindow): void {
   autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
     sendStatus({
       state: "downloaded",
-      info: { version: info.version },
+      version: info.version,
     });
   });
 
@@ -77,11 +101,25 @@ export function initUpdater(window: BrowserWindow): void {
 
   // ── IPC handlers ───────────────────────────────────────────────
 
+  // Renderer sends the user's preference from localStorage
+  ipcMain.on("updater:setMode", (_event, mode: "auto" | "manual") => {
+    updateMode = mode;
+  });
+
   ipcMain.handle("updater:checkForUpdates", async () => {
     try {
       await autoUpdater.checkForUpdates();
-    } catch (err) {
-      // Error event will be emitted and sent to renderer
+    } catch {
+      // error event will be emitted
+    }
+  });
+
+  // Explicitly trigger a download (manual mode or breaking change)
+  ipcMain.handle("updater:downloadUpdate", async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+    } catch {
+      // error event will be emitted
     }
   });
 
@@ -92,9 +130,7 @@ export function initUpdater(window: BrowserWindow): void {
   // ── Initial check (delayed so the app loads first) ─────────────
 
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {
-      // Silently ignore — the error event handler will notify the renderer
-    });
+    autoUpdater.checkForUpdates().catch(() => {});
   }, 10_000);
 
   // ── Periodic check every 4 hours ──────────────────────────────
@@ -103,7 +139,8 @@ export function initUpdater(window: BrowserWindow): void {
     autoUpdater.checkForUpdates().catch(() => {});
   }, 4 * 60 * 60 * 1000);
 
-  // Clean up reference when the window closes
+  // ── Cleanup ────────────────────────────────────────────────────
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });

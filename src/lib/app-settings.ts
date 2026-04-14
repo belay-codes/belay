@@ -19,11 +19,13 @@ export interface TerminalProfile {
 
 interface AppSettings {
   notificationsEnabled: boolean;
+  autoUpdate: "auto" | "manual";
   terminalProfiles: TerminalProfile[];
 }
 
 const defaults: AppSettings = {
   notificationsEnabled: true,
+  autoUpdate: "auto",
   terminalProfiles: [],
 };
 
@@ -54,6 +56,18 @@ export function getNotificationsEnabled(): boolean {
 export function setNotificationsEnabled(enabled: boolean): void {
   const settings = load();
   settings.notificationsEnabled = enabled;
+  save(settings);
+}
+
+// ── Auto-update ─────────────────────────────────────────────────────
+
+export function getAutoUpdate(): "auto" | "manual" {
+  return load().autoUpdate;
+}
+
+export function setAutoUpdate(mode: "auto" | "manual"): void {
+  const settings = load();
+  settings.autoUpdate = mode;
   save(settings);
 }
 

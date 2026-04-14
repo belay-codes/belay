@@ -13,12 +13,15 @@ import {
   Bell,
   BellOff,
   TerminalSquare,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useInstalledHarnesses, useAcpActions } from "@/hooks/use-acp";
 import {
   getNotificationsEnabled,
   setNotificationsEnabled,
+  getAutoUpdate,
+  setAutoUpdate,
   getTerminalProfiles,
   addTerminalProfile,
   updateTerminalProfile,
@@ -70,6 +73,9 @@ export function SettingsDialog({
   const [notificationsEnabled, setNotificationsEnabledState] = useState(
     getNotificationsEnabled,
   );
+  const [autoUpdateMode, setAutoUpdateModeState] = useState<"auto" | "manual">(
+    getAutoUpdate,
+  );
   const { disconnect } = useAcpActions();
 
   const toggleNotifications = useCallback(() => {
@@ -77,6 +83,13 @@ export function SettingsDialog({
     setNotificationsEnabledState(next);
     setNotificationsEnabled(next);
   }, [notificationsEnabled]);
+
+  const toggleAutoUpdate = useCallback(() => {
+    const next = autoUpdateMode === "auto" ? "manual" : "auto";
+    setAutoUpdateModeState(next as "auto" | "manual");
+    setAutoUpdate(next as "auto" | "manual");
+    window.electronAPI?.updaterSetMode(next as "auto" | "manual");
+  }, [autoUpdateMode]);
   const [connectionStates, setConnectionStates] = useState<
     Record<string, string>
   >({});
@@ -936,6 +949,50 @@ export function SettingsDialog({
                     transform: notificationsEnabled
                       ? "translateX(18px)"
                       : "translateX(2px)",
+                  }}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Auto-update section */}
+          <div className="border-b border-border px-5 py-4">
+            <div className="mb-1 flex items-center gap-2">
+              <RefreshCw className="size-4 text-muted-foreground" />
+              <h3 className="text-sm font-semibold">Auto-update</h3>
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Automatically download and install updates in the background.
+              Major (breaking) updates always require manual confirmation so
+              you can back up first.
+            </p>
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Download updates automatically</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoUpdateMode === "auto"}
+                onClick={toggleAutoUpdate}
+                className="relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors"
+                style={{
+                  backgroundColor:
+                    autoUpdateMode === "auto"
+                      ? "var(--color-primary)"
+                      : "var(--color-muted)",
+                  border:
+                    autoUpdateMode === "auto"
+                      ? undefined
+                      : "1px solid var(--color-border)",
+                }}
+              >
+                <span
+                  className="inline-block size-4 rounded-full bg-white shadow-sm transition-transform"
+                  style={{
+                    transform:
+                      autoUpdateMode === "auto"
+                        ? "translateX(18px)"
+                        : "translateX(2px)",
                   }}
                 />
               </button>

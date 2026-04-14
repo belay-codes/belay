@@ -5,10 +5,10 @@ import { contextBridge, ipcRenderer } from "electron";
 export type UpdateStatus =
   | { state: "idle" }
   | { state: "checking" }
-  | { state: "available"; info: { version: string; releaseNotes?: string } }
+  | { state: "available"; version: string; breaking: boolean; releaseNotes?: string }
   | { state: "not-available" }
   | { state: "downloading"; progress: { percent: number } }
-  | { state: "downloaded"; info: { version: string } }
+  | { state: "downloaded"; version: string }
   | { state: "error"; message: string };
 
 contextBridge.exposeInMainWorld("electronAPI", {
@@ -235,7 +235,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // Auto-updater
+  updaterSetMode: (mode: "auto" | "manual") => ipcRenderer.send("updater:setMode", mode),
   updaterCheckForUpdates: () => ipcRenderer.invoke("updater:checkForUpdates"),
+  updaterDownloadUpdate: () => ipcRenderer.invoke("updater:downloadUpdate"),
   updaterQuitAndInstall: () => ipcRenderer.invoke("updater:quitAndInstall"),
   updaterOnStatus: (callback: (status: UpdateStatus) => void) => {
     const handler = (
