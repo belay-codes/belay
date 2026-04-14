@@ -1136,11 +1136,6 @@ export function Chat({
         {/* Agent selector + input pinned to bottom */}
         <div className="border-t border-border/40 px-4 pt-2 pb-3">
           <div className="mx-auto max-w-4xl">
-            <div className="mb-2 flex items-center gap-2">
-              {agentSelector}
-              {modeSelector}
-              <div className="flex-1" />
-            </div>
             <ChatInput
               onSend={handleSend}
               disabled={!agentId || isThinking}
@@ -1151,6 +1146,11 @@ export function Chat({
               modes={availableModes}
               onModeSelect={handleModeSelect}
             />
+            <div className="mt-2 flex items-center gap-2">
+              {agentSelector}
+              {modeSelector}
+              <div className="flex-1" />
+            </div>
           </div>
         </div>
 
@@ -1214,11 +1214,6 @@ export function Chat({
       {/* Agent selector + input pinned to bottom */}
       <div className="border-t border-border/40 px-4 pt-2 pb-3">
         <div className="mx-auto max-w-4xl">
-          <div className="mb-2 flex items-center gap-2">
-            {agentSelector}
-            {modeSelector}
-            <div className="flex-1" />
-          </div>
           <ChatInput
             onSend={handleSend}
             disabled={!agentId || isThinking}
@@ -1229,6 +1224,11 @@ export function Chat({
             modes={availableModes}
             onModeSelect={handleModeSelect}
           />
+          <div className="mt-2 flex items-center gap-2">
+            {agentSelector}
+            {modeSelector}
+            <div className="flex-1" />
+          </div>
         </div>
       </div>
 
