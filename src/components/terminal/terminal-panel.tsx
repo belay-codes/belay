@@ -17,6 +17,7 @@ interface ContextMenuState {
 // ── Props ───────────────────────────────────────────────────────────
 
 interface TerminalPanelProps {
+  isOpen?: boolean;
   projectPath?: string;
   tabs: TerminalTab[];
   activeTabId: string;
@@ -30,6 +31,7 @@ interface TerminalPanelProps {
 // ── Component ───────────────────────────────────────────────────────
 
 export function TerminalPanel({
+  isOpen = true,
   projectPath,
   tabs,
   activeTabId,
@@ -246,11 +248,19 @@ export function TerminalPanel({
   return (
     <div
       className={cn(
-        "flex flex-col bg-background animate-in slide-in-from-bottom duration-200",
+        "flex flex-col bg-background overflow-hidden",
+        !isDragging && "transition-[height] duration-200 ease-in-out",
         isDragging && "select-none",
       )}
-      style={{ height: `${height}px` }}
+      style={{ height: isOpen ? `${height}px` : "0px" }}
     >
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          "transition-opacity duration-200",
+          isOpen ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+      >
       {/* Drag handle */}
       <div
         className="group relative flex h-1 shrink-0 cursor-row-resize items-center justify-center"
@@ -414,7 +424,7 @@ export function TerminalPanel({
 
       {/* Terminal content — render all tabs, show only the active one */}
       <div className="relative min-h-0 flex-1">
-        {tabs.map((tab) => (
+        {isOpen && tabs.map((tab) => (
           <div
             key={tab.id}
             className={
@@ -460,6 +470,7 @@ export function TerminalPanel({
           </div>,
           document.body,
         )}
+      </div>
     </div>
   );
 }
