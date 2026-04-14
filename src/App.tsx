@@ -401,45 +401,43 @@ function AppLayout() {
                 )}
               </div>
 
-              {/* Terminal panel — always rendered for the active session so it can animate open/closed */}
-              {activeSession && (() => {
-                const terminalData = sessionTerminals.get(activeSession.id);
-                const isTerminalOpen =
-                  !!terminalData && terminalData.tabs.length > 0;
+              {/* Terminal panels — outside the rounded container */}
+              {openProjects.map((project) =>
+                project.sessions.map((session) => {
+                  const isActive =
+                    session.id === activeSessionId &&
+                    project.id === activeProjectId;
+                  const terminalData = sessionTerminals.get(session.id);
+                  const isTerminalOpen =
+                    !!terminalData && terminalData.tabs.length > 0;
 
-                const agentHarness = activeSession.agentId
-                  ? harnesses.find((h) => h.agentId === activeSession.agentId)
-                  : undefined;
-                const spawnOptions: SpawnOptions | undefined =
-                  agentHarness?.useWsl
-                    ? {
-                        isWsl: true,
-                        wslDistro: agentHarness.wslDistro || undefined,
-                      }
+                  if (!isActive || !isTerminalOpen) return null;
+
+                  const agentHarness = session.agentId
+                    ? harnesses.find((h) => h.agentId === session.agentId)
                     : undefined;
 
-                const effectivePath =
-                  activeSession.path ?? activeProject?.path;
+                  const effectivePath = session.path ?? project.path;
 
-                return (
-                  <TerminalPanel
-                    key={`terminal-${activeSession.id}`}
-                    isOpen={isTerminalOpen}
-                    projectPath={effectivePath}
-                    tabs={terminalData?.tabs ?? []}
-                    activeTabId={terminalData?.activeTabId ?? ""}
-                    onSelectTab={(tabId) => selectTab(activeSession.id, tabId)}
-                    onAddTab={() => addTab(activeSession.id, spawnOptions)}
-                    onCloseTab={(tabId) => closeTab(activeSession.id, tabId)}
-                    onRenameTab={(tabId, label) =>
-                      renameTab(activeSession.id, tabId, label)
-                    }
-                    onReorderTabs={(fromIndex, toIndex) =>
-                      reorderTabs(activeSession.id, fromIndex, toIndex)
-                    }
-                  />
-                );
-              })()}
+                  return (
+                    <TerminalPanel
+                      key={`terminal-${session.id}`}
+                      projectPath={effectivePath}
+                      tabs={terminalData!.tabs}
+                      activeTabId={terminalData!.activeTabId}
+                      onSelectTab={(tabId) => selectTab(session.id, tabId)}
+                      onAddTab={() => addTab(session.id, spawnOptions)}
+                      onCloseTab={(tabId) => closeTab(session.id, tabId)}
+                      onRenameTab={(tabId, label) =>
+                        renameTab(session.id, tabId, label)
+                      }
+                      onReorderTabs={(fromIndex, toIndex) =>
+                        reorderTabs(session.id, fromIndex, toIndex)
+                      }
+                    />
+                  );
+                }),
+              )}
             </div>
           </div>
         </div>

@@ -262,7 +262,7 @@ export function ChatInput({
   }
 
   return (
-    <div className="p-3">
+    <div className="px-3 pb-3">
       <div className="relative">
         {/* ── Autocomplete dropdown ──────────────────────────────── */}
         {menuState.type !== "hidden" && menuState.items.length > 0 && (
