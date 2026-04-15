@@ -18,6 +18,39 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sessionDeleteMessages: (sessionId: string) =>
     ipcRenderer.invoke("session:deleteMessages", sessionId),
 
+  // Project storage (.belay/)
+  storageInit: (projectPath: string) =>
+    ipcRenderer.invoke("storage:init", projectPath),
+  storageLoadSettings: (projectPath: string) =>
+    ipcRenderer.invoke("storage:loadSettings", projectPath),
+  storageSaveSettings: (
+    projectPath: string,
+    settings: Record<string, unknown>,
+  ) => ipcRenderer.invoke("storage:saveSettings", projectPath, settings),
+  storageLoadState: (projectPath: string) =>
+    ipcRenderer.invoke("storage:loadState", projectPath),
+  storageSaveState: (projectPath: string, state: Record<string, unknown>) =>
+    ipcRenderer.invoke("storage:saveState", projectPath, state),
+  storageLoadMessages: (projectPath: string, sessionId: string) =>
+    ipcRenderer.invoke("storage:loadMessages", projectPath, sessionId),
+  storageSaveMessages: (
+    projectPath: string,
+    sessionId: string,
+    messages: unknown[],
+  ) =>
+    ipcRenderer.invoke(
+      "storage:saveMessages",
+      projectPath,
+      sessionId,
+      messages,
+    ),
+  storageDeleteMessages: (projectPath: string, sessionId: string) =>
+    ipcRenderer.invoke("storage:deleteMessages", projectPath, sessionId),
+  storageListSessions: (projectPath: string) =>
+    ipcRenderer.invoke("storage:listSessions", projectPath),
+  storageGetInfo: (projectPath: string) =>
+    ipcRenderer.invoke("storage:getInfo", projectPath),
+
   // Notifications
   notificationSend: (
     title: string,
@@ -156,8 +189,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   gitStatus: (dirPath: string) => ipcRenderer.invoke("git:status", dirPath),
   gitLog: (dirPath: string, maxCount?: number) =>
     ipcRenderer.invoke("git:log", dirPath, maxCount),
-  gitBranches: (dirPath: string) =>
-    ipcRenderer.invoke("git:branches", dirPath),
+  gitBranches: (dirPath: string) => ipcRenderer.invoke("git:branches", dirPath),
   gitDiffSummary: (dirPath: string, staged?: boolean) =>
     ipcRenderer.invoke("git:diffSummary", dirPath, staged),
   gitStage: (dirPath: string, ...files: string[]) =>
@@ -175,16 +207,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("git:createBranch", dirPath, name, checkout),
   gitListWorktrees: (dirPath: string) =>
     ipcRenderer.invoke("git:listWorktrees", dirPath),
-  gitCreateWorktree: (
-    dirPath: string,
-    branch: string,
-    targetPath: string,
-  ) => ipcRenderer.invoke("git:createWorktree", dirPath, branch, targetPath),
-  gitRemoveWorktree: (
-    dirPath: string,
-    worktreePath: string,
-    force?: boolean,
-  ) => ipcRenderer.invoke("git:removeWorktree", dirPath, worktreePath, force),
+  gitCreateWorktree: (dirPath: string, branch: string, targetPath: string) =>
+    ipcRenderer.invoke("git:createWorktree", dirPath, branch, targetPath),
+  gitRemoveWorktree: (dirPath: string, worktreePath: string, force?: boolean) =>
+    ipcRenderer.invoke("git:removeWorktree", dirPath, worktreePath, force),
 
   // Terminal
   terminalSpawn: (

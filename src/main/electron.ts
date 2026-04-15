@@ -1,4 +1,11 @@
-import { app, BrowserWindow, ipcMain, dialog, Notification, nativeImage } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  Notification,
+  nativeImage,
+} from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { NativeImage } from "electron";
@@ -23,12 +30,23 @@ import {
   updateHarness,
 } from "./acp/harness-store.js";
 import * as git from "./git.js";
+import {
+  initProjectStorage,
+  loadProjectSettings,
+  saveProjectSettings,
+  loadProjectState,
+  saveProjectState,
+  loadSessionMessages as loadProjectSessionMessages,
+  saveSessionMessages as saveProjectSessionMessages,
+  deleteSessionMessages as deleteProjectSessionMessages,
+  listPersistedSessions,
+  getStorageInfo,
+  type ProjectState,
+} from "./project-storage.js";
 
 // Set the App User Model ID so Windows shows "Belay" (not "electron")
 // as the notification source and groups the taskbar icon correctly.
 app.setAppUserModelId("Belay");
-
-
 
 // Pre-loaded after app.whenReady(); shared across window + notifications.
 let appIcon: NativeImage | null = null;
@@ -135,7 +153,11 @@ ipcMain.on(
     const windowObscured =
       !mainWindow || mainWindow.isMinimized() || !mainWindow.isFocused();
     if (!sessionVisible || windowObscured) {
-      const notification = new Notification({ title, body, icon: appIcon ?? undefined });
+      const notification = new Notification({
+        title,
+        body,
+        icon: appIcon ?? undefined,
+      });
       notification.on("click", () => {
         // Restore and focus the window
         if (mainWindow) {
@@ -190,6 +212,68 @@ ipcMain.handle(
 
 ipcMain.handle("session:deleteMessages", async (_event, sessionId: string) => {
   await deleteSessionMessages(sessionId);
+});
+
+// ── IPC handlers for project storage (.belay/) ────────────────────────
+
+ipcMain.handle("storage:init", async (_event, projectPath: string) => {
+  return initProjectStorage(projectPath);
+});
+
+ipcMain.handle("storage:loadSettings", async (_event, projectPath: string) => {
+  return loadProjectSettings(projectPath);
+});
+
+ipcMain.handle(
+  "storage:saveSettings",
+  async (_event, projectPath: string, settings: Record<string, unknown>) => {
+    await saveProjectSettings(projectPath, settings);
+  },
+);
+
+ipcMain.handle("storage:loadState", async (_event, projectPath: string) => {
+  return loadProjectState(projectPath);
+});
+
+ipcMain.handle(
+  "storage:saveState",
+  async (_event, projectPath: string, state: ProjectState) => {
+    await saveProjectState(projectPath, state);
+  },
+);
+
+ipcMain.handle(
+  "storage:loadMessages",
+  async (_event, projectPath: string, sessionId: string) => {
+    return loadProjectSessionMessages(projectPath, sessionId);
+  },
+);
+
+ipcMain.handle(
+  "storage:saveMessages",
+  async (
+    _event,
+    projectPath: string,
+    sessionId: string,
+    messages: Record<string, unknown>[],
+  ) => {
+    await saveProjectSessionMessages(projectPath, sessionId, messages);
+  },
+);
+
+ipcMain.handle(
+  "storage:deleteMessages",
+  async (_event, projectPath: string, sessionId: string) => {
+    await deleteProjectSessionMessages(projectPath, sessionId);
+  },
+);
+
+ipcMain.handle("storage:listSessions", async (_event, projectPath: string) => {
+  return listPersistedSessions(projectPath);
+});
+
+ipcMain.handle("storage:getInfo", async (_event, projectPath: string) => {
+  return getStorageInfo(projectPath);
 });
 
 // ── IPC handlers for directory explorer ──────────────────────────────
@@ -312,24 +396,14 @@ ipcMain.handle("git:listWorktrees", async (_event, dirPath: string) => {
 
 ipcMain.handle(
   "git:createWorktree",
-  async (
-    _event,
-    dirPath: string,
-    branch: string,
-    targetPath: string,
-  ) => {
+  async (_event, dirPath: string, branch: string, targetPath: string) => {
     return git.createWorktree(dirPath, branch, targetPath);
   },
 );
 
 ipcMain.handle(
   "git:removeWorktree",
-  async (
-    _event,
-    dirPath: string,
-    worktreePath: string,
-    force?: boolean,
-  ) => {
+  async (_event, dirPath: string, worktreePath: string, force?: boolean) => {
     return git.removeWorktree(dirPath, worktreePath, force);
   },
 );
@@ -488,7 +562,9 @@ app.whenReady().then(() => {
   try {
     if (fs.existsSync(iconPath)) {
       appIcon = nativeImage.createFromPath(iconPath);
-      console.log(`[Electron] Icon loaded: ${appIcon.getSize().width}x${appIcon.getSize().height} from ${iconPath}`);
+      console.log(
+        `[Electron] Icon loaded: ${appIcon.getSize().width}x${appIcon.getSize().height} from ${iconPath}`,
+      );
     } else {
       console.warn(`[Electron] Icon file not found: ${iconPath}`);
     }

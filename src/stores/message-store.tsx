@@ -86,11 +86,11 @@ interface MessageStoreContextValue {
   /** Set messages in the cache (does NOT persist to disk). */
   setMessages: (sessionId: string, messages: Message[]) => void;
   /** Load messages from disk into the cache. Returns the loaded messages. */
-  loadSession: (sessionId: string) => Promise<Message[]>;
+  loadSession: (sessionId: string, projectPath?: string) => Promise<Message[]>;
   /** Persist the cached messages for a session to disk. */
-  saveSession: (sessionId: string) => Promise<void>;
+  saveSession: (sessionId: string, projectPath?: string) => Promise<void>;
   /** Delete a session's cache entry and its file on disk. */
-  deleteSession: (sessionId: string) => void;
+  deleteSession: (sessionId: string, projectPath?: string) => void;
   /** Check whether a session has been loaded from disk. */
   isSessionLoaded: (sessionId: string) => boolean;
 }
@@ -125,7 +125,7 @@ export function MessageStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadSession = useCallback(
-    async (sessionId: string): Promise<Message[]> => {
+    async (sessionId: string, projectPath?: string): Promise<Message[]> => {
       // Already loaded — return from cache immediately
       if (loadedRef.current.has(sessionId)) {
         return cacheRef.current.get(sessionId) ?? [];
@@ -141,11 +141,23 @@ export function MessageStoreProvider({ children }: { children: ReactNode }) {
       // Start a new load
       const promise = (async (): Promise<Message[]> => {
         try {
-          const raw =
-            (await window.electronAPI?.sessionLoadMessages(sessionId)) ?? [];
+          let raw: Record<string, unknown>[] | null | undefined;
 
-          const messages: Message[] = raw.map((r: Record<string, unknown>) =>
-            deserializeMessage(r),
+          // Try project-scoped storage first
+          if (projectPath && window.electronAPI?.storageLoadMessages) {
+            raw = await window.electronAPI.storageLoadMessages(
+              projectPath,
+              sessionId,
+            );
+          }
+
+          // Fallback to legacy global storage for sessions not yet migrated
+          if (!raw && window.electronAPI?.sessionLoadMessages) {
+            raw = await window.electronAPI.sessionLoadMessages(sessionId);
+          }
+
+          const messages: Message[] = (raw ?? []).map(
+            (r: Record<string, unknown>) => deserializeMessage(r),
           );
 
           console.log(
@@ -174,39 +186,72 @@ export function MessageStoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const saveSession = useCallback(async (sessionId: string): Promise<void> => {
-    const messages = cacheRef.current.get(sessionId);
-    if (!messages) {
-      console.warn(
-        `[MessageStore] saveSession called for ${sessionId.slice(0, 8)}… but no cached messages found`,
+  const saveSession = useCallback(
+    async (sessionId: string, projectPath?: string): Promise<void> => {
+      const messages = cacheRef.current.get(sessionId);
+      if (!messages) {
+        console.warn(
+          `[MessageStore] saveSession called for ${sessionId.slice(0, 8)}… but no cached messages found`,
+        );
+        return;
+      }
+
+      const serialized = messages.map(serializeMessage);
+
+      console.log(
+        `[MessageStore] Saving ${messages.length} messages for session ${sessionId.slice(0, 8)}…`,
       );
-      return;
-    }
 
-    const serialized = messages.map(serializeMessage);
+      try {
+        // Save to project-scoped storage
+        if (projectPath && window.electronAPI?.storageSaveMessages) {
+          await window.electronAPI.storageSaveMessages(
+            projectPath,
+            sessionId,
+            serialized,
+          );
+        } else {
+          // Fallback to legacy global storage
+          await window.electronAPI?.sessionSaveMessages(sessionId, serialized);
+        }
+      } catch (err) {
+        console.error(
+          `[MessageStore] Failed to save session ${sessionId}:`,
+          err,
+        );
+      }
+    },
+    [],
+  );
 
-    console.log(
-      `[MessageStore] Saving ${messages.length} messages for session ${sessionId.slice(0, 8)}…`,
-    );
+  const deleteSession = useCallback(
+    (sessionId: string, projectPath?: string) => {
+      cacheRef.current.delete(sessionId);
+      loadedRef.current.delete(sessionId);
+      loadingPromisesRef.current.delete(sessionId);
 
-    try {
-      await window.electronAPI?.sessionSaveMessages(sessionId, serialized);
-    } catch (err) {
-      console.error(`[MessageStore] Failed to save session ${sessionId}:`, err);
-    }
-  }, []);
-
-  const deleteSession = useCallback((sessionId: string) => {
-    cacheRef.current.delete(sessionId);
-    loadedRef.current.delete(sessionId);
-    loadingPromisesRef.current.delete(sessionId);
-    window.electronAPI?.sessionDeleteMessages(sessionId).catch((err) => {
-      console.error(
-        `[MessageStore] Failed to delete session file ${sessionId}:`,
-        err,
-      );
-    });
-  }, []);
+      // Delete from project-scoped storage
+      if (projectPath && window.electronAPI?.storageDeleteMessages) {
+        window.electronAPI
+          .storageDeleteMessages(projectPath, sessionId)
+          .catch((err) => {
+            console.error(
+              `[MessageStore] Failed to delete session file ${sessionId}:`,
+              err,
+            );
+          });
+      } else {
+        // Fallback to legacy global storage
+        window.electronAPI?.sessionDeleteMessages(sessionId).catch((err) => {
+          console.error(
+            `[MessageStore] Failed to delete session file ${sessionId}:`,
+            err,
+          );
+        });
+      }
+    },
+    [],
+  );
 
   const isSessionLoaded = useCallback((sessionId: string): boolean => {
     return loadedRef.current.has(sessionId);
@@ -260,6 +305,7 @@ interface UseSessionMessagesResult {
 
 export function useSessionMessages(
   sessionId: string,
+  projectPath?: string,
 ): UseSessionMessagesResult {
   const store = useContext(MessageStoreContext);
   if (!store) {
@@ -283,7 +329,7 @@ export function useSessionMessages(
   useEffect(() => {
     let cancelled = false;
 
-    store.loadSession(sessionId).then((loaded) => {
+    store.loadSession(sessionId, projectPath).then((loaded) => {
       if (cancelled) return;
       setMessagesInternal(loaded);
       setIsLoaded(true);
@@ -292,7 +338,7 @@ export function useSessionMessages(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, store]);
+  }, [sessionId, store, projectPath]);
 
   // Wrapper that keeps local state and cache in sync.
   //
@@ -316,8 +362,8 @@ export function useSessionMessages(
 
   // Persist current cache to disk
   const saveMessages = useCallback(async () => {
-    await store.saveSession(sessionId);
-  }, [sessionId, store]);
+    await store.saveSession(sessionId, projectPath);
+  }, [sessionId, store, projectPath]);
 
   return { messages, setMessages, saveMessages, isLoaded };
 }

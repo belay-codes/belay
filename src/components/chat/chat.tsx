@@ -191,8 +191,10 @@ interface ChatProps {
 
 export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // ── Persisted message state ──────────────────────────────────────
-  const { messages, setMessages, saveMessages, isLoaded } =
-    useSessionMessages(sessionId);
+  const { messages, setMessages, saveMessages, isLoaded } = useSessionMessages(
+    sessionId,
+    projectPath,
+  );
   const messageStore = useMessageStore();
 
   const [isThinking, setIsThinking] = useState(false);

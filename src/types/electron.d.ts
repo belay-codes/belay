@@ -44,6 +44,69 @@ export interface ElectronAPI {
   ) => Promise<void>;
   sessionDeleteMessages: (sessionId: string) => Promise<void>;
 
+  // Project storage (.belay/)
+  storageInit: (projectPath: string) => Promise<{
+    root: string;
+    isProjectLocal: boolean;
+    sessionsDir: string;
+  }>;
+  storageLoadSettings: (projectPath: string) => Promise<{
+    defaultAgentId?: string | null;
+    mcpServers?: Array<{
+      name: string;
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    }>;
+    additionalDirectories?: string[];
+    [key: string]: unknown;
+  } | null>;
+  storageSaveSettings: (
+    projectPath: string,
+    settings: Record<string, unknown>,
+  ) => Promise<void>;
+  storageLoadState: (projectPath: string) => Promise<{
+    sessions: Array<{
+      id: string;
+      title: string;
+      createdAt: string;
+      agentId: string | null;
+      path?: string;
+    }>;
+    activeSessionId: string | null;
+    groups: Array<{
+      id: string;
+      name: string;
+      color: string;
+      sessionIds: string[];
+      collapsed: boolean;
+    }>;
+    layout: string[];
+  } | null>;
+  storageSaveState: (
+    projectPath: string,
+    state: Record<string, unknown>,
+  ) => Promise<void>;
+  storageLoadMessages: (
+    projectPath: string,
+    sessionId: string,
+  ) => Promise<Record<string, unknown>[] | null>;
+  storageSaveMessages: (
+    projectPath: string,
+    sessionId: string,
+    messages: unknown[],
+  ) => Promise<void>;
+  storageDeleteMessages: (
+    projectPath: string,
+    sessionId: string,
+  ) => Promise<void>;
+  storageListSessions: (projectPath: string) => Promise<string[]>;
+  storageGetInfo: (projectPath: string) => Promise<{
+    root: string;
+    isProjectLocal: boolean;
+    sessionsDir: string;
+  }>;
+
   // Notifications
   notificationSend: (
     title: string,
@@ -170,14 +233,8 @@ export interface ElectronAPI {
     data: GitDiffStat[] | null;
     error: GitError | null;
   }>;
-  gitStage: (
-    dirPath: string,
-    ...files: string[]
-  ) => Promise<GitError | null>;
-  gitUnstage: (
-    dirPath: string,
-    ...files: string[]
-  ) => Promise<GitError | null>;
+  gitStage: (dirPath: string, ...files: string[]) => Promise<GitError | null>;
+  gitUnstage: (dirPath: string, ...files: string[]) => Promise<GitError | null>;
   gitCommit: (
     dirPath: string,
     message: string,
@@ -188,10 +245,7 @@ export interface ElectronAPI {
   gitPush: (dirPath: string) => Promise<GitError | null>;
   gitPull: (dirPath: string) => Promise<GitError | null>;
   gitFetch: (dirPath: string) => Promise<GitError | null>;
-  gitCheckout: (
-    dirPath: string,
-    branch: string,
-  ) => Promise<GitError | null>;
+  gitCheckout: (dirPath: string, branch: string) => Promise<GitError | null>;
   gitCreateBranch: (
     dirPath: string,
     name: string,
