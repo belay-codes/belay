@@ -8,6 +8,7 @@ import {
   GitBranch,
   Shield,
   CheckCheck,
+  Timer,
 } from "lucide-react";
 import { ThinkingBlock } from "./thinking-block";
 
@@ -18,6 +19,16 @@ function formatTimestamp(date: Date): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function formatElapsed(start: Date, end?: Date): string {
+  const ms = (end ?? new Date()).getTime() - start.getTime();
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.floor(seconds % 60);
+  return `${minutes}m ${remaining}s`;
 }
 import { ToolCallDisplay } from "./tool-call-display";
 import { Button } from "@/components/ui/button";
@@ -98,7 +109,12 @@ function BlockRenderer({
   switch (block.type) {
     case "thinking":
       return (
-        <ThinkingBlock content={block.content} isStreaming={isStreaming} />
+        <ThinkingBlock
+          content={block.content}
+          isStreaming={isStreaming}
+          startedAt={block.startedAt}
+          completedAt={block.completedAt}
+        />
       );
 
     case "text":
@@ -407,8 +423,14 @@ export function MessageBubble({
         ))}
       </div>
       {!message.isStreaming && (
-        <span className="mt-1 block text-[10px] leading-none text-muted-foreground/50">
-          {formatTimestamp(message.timestamp)}
+        <span className="mt-1 flex items-center gap-2 text-[10px] leading-none text-muted-foreground/50">
+          {message.completedAt && (
+            <span className="flex items-center gap-1">
+              <Timer className="size-2.5" />
+              {formatElapsed(message.timestamp, message.completedAt)}
+            </span>
+          )}
+          <span>{formatTimestamp(message.timestamp)}</span>
         </span>
       )}
     </div>
