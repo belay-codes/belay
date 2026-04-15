@@ -7,15 +7,27 @@ import {
   Wrench,
 } from "lucide-react";
 import { useState } from "react";
+import { Clock } from "lucide-react";
 import type { ToolCallInfo } from "./types";
+
+// ── Timestamp formatting ────────────────────────────────────────────
+
+function formatTimestamp(date: Date): string {
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
 
 export type { ToolCallInfo };
 
 interface ToolCallDisplayProps {
   toolCall: ToolCallInfo;
+  timestamp?: Date;
 }
 
-export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
+export function ToolCallDisplay({ toolCall, timestamp }: ToolCallDisplayProps) {
   const [expanded, setExpanded] = useState(false);
 
   const statusIcon = {
@@ -42,6 +54,12 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
         <Wrench className="size-3.5 text-muted-foreground" />
         <span className="font-medium">{toolCall.name}</span>
         {statusIcon}
+        {timestamp && (
+          <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/60">
+            <Clock className="size-2.5" />
+            {formatTimestamp(timestamp)}
+          </span>
+        )}
       </button>
 
       {expanded && (

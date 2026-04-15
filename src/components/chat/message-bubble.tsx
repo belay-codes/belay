@@ -10,6 +10,15 @@ import {
   CheckCheck,
 } from "lucide-react";
 import { ThinkingBlock } from "./thinking-block";
+
+// ── Timestamp formatting ────────────────────────────────────────────
+
+function formatTimestamp(date: Date): string {
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 import { ToolCallDisplay } from "./tool-call-display";
 import { Button } from "@/components/ui/button";
 import { renderMarkdown } from "./markdown";
@@ -79,10 +88,12 @@ function BlockRenderer({
   block,
   isStreaming,
   onPermissionRespond,
+  timestamp,
 }: {
   block: MessageBlock;
   isStreaming?: boolean;
   onPermissionRespond?: (requestId: string, optionId: string) => void;
+  timestamp?: Date;
 }) {
   switch (block.type) {
     case "thinking":
@@ -99,7 +110,9 @@ function BlockRenderer({
       );
 
     case "tool_call":
-      return <ToolCallDisplay toolCall={block.toolCall} />;
+      return (
+        <ToolCallDisplay toolCall={block.toolCall} timestamp={timestamp} />
+      );
 
     case "permission_request":
       if (!onPermissionRespond) return null;
@@ -351,6 +364,9 @@ export function MessageBubble({
         {/* ── Bubble ───────────────────────────────────────────────── */}
         <div className="max-w-[85%] rounded-lg rounded-br-sm bg-primary px-3.5 py-2 text-[14px] leading-relaxed text-primary-foreground">
           <p className="whitespace-pre-wrap wrap-break-word">{content}</p>
+          <span className="mt-1 block text-right text-[10px] leading-none text-primary-foreground/50">
+            {formatTimestamp(message.timestamp)}
+          </span>
         </div>
       </div>
     );
@@ -386,9 +402,15 @@ export function MessageBubble({
               block.id === message.blocks[message.blocks.length - 1]?.id
             }
             onPermissionRespond={onPermissionRespond}
+            timestamp={message.timestamp}
           />
         ))}
       </div>
+      {!message.isStreaming && (
+        <span className="mt-1 block text-[10px] leading-none text-muted-foreground/50">
+          {formatTimestamp(message.timestamp)}
+        </span>
+      )}
     </div>
   );
 }
