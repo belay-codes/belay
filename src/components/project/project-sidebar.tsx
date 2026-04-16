@@ -4,7 +4,6 @@ import {
   X,
   Plus,
   MessageSquare,
-  Clock,
   ChevronDown,
   ChevronRight,
   Pencil,
@@ -95,7 +94,10 @@ export function ProjectSidebar() {
   const [appVersion, setAppVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    window.electronAPI?.appVersion().then(setAppVersion).catch(() => {});
+    window.electronAPI
+      ?.appVersion()
+      .then(setAppVersion)
+      .catch(() => {});
   }, []);
   const [expandedProjects, setExpandedProjects] =
     useState<Set<string>>(loadExpanded);
@@ -941,8 +943,6 @@ export function ProjectSidebar() {
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col">
-
-
       <div className="px-2 pt-1 pb-1.5">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
@@ -983,7 +983,9 @@ export function ProjectSidebar() {
           >
             {filteredProjects.map((project) => {
               const isActive = project.id === activeProjectId;
-              const isExpanded = query ? true : expandedProjects.has(project.id);
+              const isExpanded = query
+                ? true
+                : expandedProjects.has(project.id);
               const canCollapse = !(isActive && project.activeSessionId);
               const isDragging =
                 dragInfoRef.current?.kind === "project" &&
