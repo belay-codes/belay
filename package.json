@@ -1,6 +1,6 @@
 {
   "name": "belay",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Belay – a multi-session AI coding IDE",
   "author": "Belay Contributors",
   "main": "dist/main/electron.js",

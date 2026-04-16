@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/belay-codes/belay/compare/belay-v1.0.0...belay-v1.0.1) (2026-04-16)
+
+
+### Bug Fixes
+
+* **ci:** split build and publish steps for reliable artifact uploads ([b41239f](https://github.com/belay-codes/belay/commit/b41239f0fac576a7e61c97874b856037437a608c))
+
 ## 1.0.0 (2026-04-16)
 
 
