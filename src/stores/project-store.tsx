@@ -317,14 +317,13 @@ function projectReducer(
         };
       }
 
-      const defaultSession = makeDefaultSession();
       const newProject: Project = {
         ...action.project,
         lastOpened: new Date(),
-        sessions: [defaultSession],
-        activeSessionId: defaultSession.id,
+        sessions: [],
+        activeSessionId: null,
         groups: [],
-        layout: [defaultSession.id],
+        layout: [],
       };
 
       return {
@@ -846,6 +845,61 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
             path: s.path ?? undefined,
           }));
 
+          // --- Orphan session recovery ---
+          // Scan .belay/sessions/ for files not referenced in state.json.
+          // This can happen if state.json was overwritten by a previous bug
+          // that created a fresh "New Chat" on every project open.
+          try {
+            const diskSessionIds = await api.storageListSessions(projectPath);
+            const knownIds = new Set(sessions.map((s) => s.id));
+            const orphanIds = diskSessionIds.filter((id) => !knownIds.has(id));
+
+            for (const orphanId of orphanIds) {
+              let title = "Recovered Session";
+              try {
+                const raw = await api.storageLoadMessages(
+                  projectPath,
+                  orphanId,
+                );
+                if (raw && raw.length > 0) {
+                  const firstUser = raw.find(
+                    (m: Record<string, unknown>) => m.role === "user",
+                  );
+                  if (firstUser) {
+                    const blocks = (firstUser.blocks ?? []) as Array<{
+                      type: string;
+                      content?: string;
+                    }>;
+                    const textBlock = blocks.find((b) => b.type === "text");
+                    if (textBlock?.content) {
+                      const content = textBlock.content;
+                      title =
+                        content.length > 80
+                          ? content.slice(0, 77) + "..."
+                          : content;
+                    }
+                  }
+                }
+              } catch {
+                // Ignore — use fallback title
+              }
+              sessions.push({
+                id: orphanId,
+                title,
+                createdAt: new Date(),
+                agentId: null,
+              });
+              console.log(
+                `[ProjectStore] Recovered orphan session ${orphanId.slice(0, 8)}… ("${title}")`,
+              );
+            }
+          } catch (err) {
+            console.warn(
+              `[ProjectStore] Orphan recovery scan failed for ${projectId}:`,
+              err,
+            );
+          }
+
           const groups = (saved.groups ?? []).map((g) => ({
             id: g.id,
             name: g.name,
@@ -854,9 +908,24 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
             collapsed: g.collapsed ?? false,
           }));
 
-          const layout = saved.layout ?? computeLayout(groups, sessions);
+          // Merge saved layout with any recovered orphan sessions that
+          // aren't already present (e.g. state.json was overwritten but
+          // session files survived on disk).
+          const savedLayout = saved.layout ?? [];
+          const layoutSet = new Set(savedLayout);
+          const missingFromLayout = sessions
+            .filter((s) => !layoutSet.has(s.id))
+            .map((s) => s.id);
+          const layout =
+            savedLayout.length > 0
+              ? [...savedLayout, ...missingFromLayout]
+              : computeLayout(groups, sessions);
           const activeSessionId =
             saved.activeSessionId ?? sessions[0]?.id ?? null;
+
+          console.log(
+            `[ProjectStore] Hydrating project ${projectId} with ${sessions.length} session(s)`,
+          );
 
           dispatch({
             type: "HYDRATE_PROJECT",
@@ -865,6 +934,17 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
             activeSessionId,
             groups,
             layout,
+          });
+        } else {
+          // No saved state — brand new project. Create a default session.
+          const defaultSession = makeDefaultSession();
+          dispatch({
+            type: "HYDRATE_PROJECT",
+            projectId,
+            sessions: [defaultSession],
+            activeSessionId: defaultSession.id,
+            groups: [],
+            layout: [defaultSession.id],
           });
         }
       } catch (err) {

@@ -55,6 +55,16 @@ function deserializeBlock(raw: Record<string, unknown>): MessageBlock {
   if (typeof block.completedAt === "string") {
     block.completedAt = new Date(block.completedAt);
   }
+  // Tool-call blocks store dates inside the nested toolCall object
+  if (block.toolCall && typeof block.toolCall === "object") {
+    const tc = block.toolCall as Record<string, unknown>;
+    if (typeof tc.startedAt === "string") {
+      tc.startedAt = new Date(tc.startedAt);
+    }
+    if (typeof tc.completedAt === "string") {
+      tc.completedAt = new Date(tc.completedAt);
+    }
+  }
   return block as unknown as MessageBlock;
 }
 
