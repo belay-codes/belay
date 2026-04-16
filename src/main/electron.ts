@@ -6,6 +6,7 @@ import {
   Notification,
   nativeImage,
 } from "electron";
+import { autoUpdater } from "electron-updater";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { NativeImage } from "electron";
@@ -576,6 +577,42 @@ app.whenReady().then(() => {
   }
 
   createWindow();
+
+  // ── Auto-update ─────────────────────────────────────────────────────
+  // Only check for updates in production (packaged) builds.
+  // Releases are created as pre-releases by release-please; electron-updater
+  // won't install them until the release is promoted to a full release on
+  // GitHub — giving you a manual gate before users are updated.
+  if (app.isPackaged) {
+    autoUpdater.autoDownload = false;
+    autoUpdater.setFeedURL({
+      provider: "github",
+      owner: "belay-ide",
+      repo: "belay",
+    });
+
+    autoUpdater.on("update-available", (info) => {
+      console.log(`[AutoUpdate] Update available: v${info.version}`);
+      // TODO: surface a notification to the user asking if they want to download
+      // For now, auto-download:
+      autoUpdater.downloadUpdate();
+    });
+
+    autoUpdater.on("update-downloaded", (info) => {
+      console.log(`[AutoUpdate] Update downloaded: v${info.version}`);
+      // TODO: show a "Restart to update" prompt to the user
+      // For now, install on next quit:
+      // autoUpdater.quitAndInstall();
+    });
+
+    autoUpdater.on("error", (err) => {
+      console.error("[AutoUpdate] Error:", err?.message);
+    });
+
+    autoUpdater.checkForUpdates().catch((err: unknown) => {
+      console.error("[AutoUpdate] Check failed:", err);
+    });
+  }
 
   // Attach maximize listeners after window is created
   if (mainWindow) {

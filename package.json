@@ -1,6 +1,5 @@
 {
   "name": "belay",
-  "private": true,
   "version": "0.1.0",
   "description": "Belay – a multi-session AI coding IDE",
   "author": "Belay Contributors",
@@ -25,6 +24,11 @@
     ],
     "icon": "public/Belay.png",
     "forceCodeSigning": false,
+    "publish": {
+      "provider": "github",
+      "owner": "belay-ide",
+      "repo": "belay"
+    },
     "win": {
       "target": [
         {
@@ -33,7 +37,10 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "publish": {
+        "provider": "github"
+      }
     },
     "mac": {
       "target": [
@@ -45,7 +52,10 @@
           ]
         }
       ],
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "publish": {
+        "provider": "github"
+      }
     },
     "linux": {
       "target": [
@@ -62,7 +72,10 @@
           ]
         }
       ],
-      "category": "Development"
+      "category": "Development",
+      "publish": {
+        "provider": "github"
+      }
     }
   },
   "dependencies": {
@@ -77,6 +90,7 @@
     "lucide-react": "^1.8.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.4",
+    "electron-updater": "^6.6.2",
     "react-dom": "^19.2.4",
     "shadcn": "^4.2.0",
     "simple-git": "^3.36.0",
