@@ -278,42 +278,45 @@ ipcMain.handle("storage:getInfo", async (_event, projectPath: string) => {
 
 // ── IPC handlers for directory explorer ──────────────────────────────
 
-ipcMain.handle("fs:readDir", async (_event, dirPath: string) => {
-  try {
-    const entries = await fs.promises.readdir(dirPath, {
-      withFileTypes: true,
-    });
-    const statPromises = entries
-      .filter((entry) => !entry.name.startsWith("."))
-      .map(async (entry) => {
-        try {
-          const fullPath = path.join(dirPath, entry.name);
-          const stat = await fs.promises.stat(fullPath);
-          return {
-            name: entry.name,
-            isDirectory: stat.isDirectory(),
-            isFile: stat.isFile(),
-            size: stat.size,
-            modifiedAt: stat.mtimeMs,
-          };
-        } catch {
-          return null;
-        }
+ipcMain.handle(
+  "fs:readDir",
+  async (_event, dirPath: string, showHidden: boolean = false) => {
+    try {
+      const entries = await fs.promises.readdir(dirPath, {
+        withFileTypes: true,
       });
-    const results = (await Promise.all(statPromises)).filter(
-      (e): e is NonNullable<typeof e> => e !== null,
-    );
-    // Sort: directories first, then alphabetical
-    results.sort((a, b) => {
-      if (a.isDirectory && !b.isDirectory) return -1;
-      if (!a.isDirectory && b.isDirectory) return 1;
-      return a.name.localeCompare(b.name);
-    });
-    return results;
-  } catch {
-    return [];
-  }
-});
+      const statPromises = entries
+        .filter((entry) => showHidden || !entry.name.startsWith("."))
+        .map(async (entry) => {
+          try {
+            const fullPath = path.join(dirPath, entry.name);
+            const stat = await fs.promises.stat(fullPath);
+            return {
+              name: entry.name,
+              isDirectory: stat.isDirectory(),
+              isFile: stat.isFile(),
+              size: stat.size,
+              modifiedAt: stat.mtimeMs,
+            };
+          } catch {
+            return null;
+          }
+        });
+      const results = (await Promise.all(statPromises)).filter(
+        (e): e is NonNullable<typeof e> => e !== null,
+      );
+      // Sort: directories first, then alphabetical
+      results.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
+      });
+      return results;
+    } catch {
+      return [];
+    }
+  },
+);
 
 // ── IPC handlers for git operations ──────────────────────────────────
 

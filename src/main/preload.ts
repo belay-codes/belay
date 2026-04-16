@@ -182,7 +182,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("acp:respondPermission", requestId, optionId),
 
   // File system - Directory explorer
-  fsReadDir: (dirPath: string) => ipcRenderer.invoke("fs:readDir", dirPath),
+  fsReadDir: (dirPath: string, showHidden: boolean = false) =>
+    ipcRenderer.invoke("fs:readDir", dirPath, showHidden),
 
   // Git
   gitIsRepo: (dirPath: string) => ipcRenderer.invoke("git:isRepo", dirPath),

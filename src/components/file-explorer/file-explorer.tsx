@@ -17,6 +17,8 @@ import {
   GitBranch,
   Package,
   RefreshCw,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { DirEntry } from "@/types/electron";
 
@@ -263,6 +265,9 @@ export function FileExplorer({ rootPath, rootLabel }: FileExplorerProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => new Set(),
   );
+  const [showHidden, setShowHidden] = useState<boolean>(
+    () => localStorage.getItem("file-explorer:showHidden") === "true",
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const rootLoadedRef = useRef(false);
@@ -276,7 +281,10 @@ export function FileExplorer({ rootPath, rootLabel }: FileExplorerProps) {
     setLoading(true);
     setError(null);
     try {
-      const entries = await window.electronAPI?.fsReadDir(normalisedRoot);
+      const entries = await window.electronAPI?.fsReadDir(
+        normalisedRoot,
+        showHidden,
+      );
       if (entries) {
         setTree(entriesToNodes(normalisedRoot, entries));
         rootLoadedRef.current = true;
@@ -286,29 +294,35 @@ export function FileExplorer({ rootPath, rootLabel }: FileExplorerProps) {
     } finally {
       setLoading(false);
     }
-  }, [normalisedRoot]);
+  }, [normalisedRoot, showHidden]);
 
   /** Lazy-load children for a directory node. */
-  const loadChildren = useCallback(async (node: TreeNode): Promise<void> => {
-    const entries = await window.electronAPI?.fsReadDir(node.path);
-    if (!entries) return;
+  const loadChildren = useCallback(
+    async (node: TreeNode): Promise<void> => {
+      const entries = await window.electronAPI?.fsReadDir(
+        node.path,
+        showHidden,
+      );
+      if (!entries) return;
 
-    const children = entriesToNodes(node.path, entries);
+      const children = entriesToNodes(node.path, entries);
 
-    setTree((prev) => {
-      const update = (nodes: TreeNode[]): TreeNode[] =>
-        nodes.map((n) => {
-          if (n.path === node.path) {
-            return { ...n, children, loaded: true };
-          }
-          if (n.children) {
-            return { ...n, children: update(n.children) };
-          }
-          return n;
-        });
-      return update(prev);
-    });
-  }, []);
+      setTree((prev) => {
+        const update = (nodes: TreeNode[]): TreeNode[] =>
+          nodes.map((n) => {
+            if (n.path === node.path) {
+              return { ...n, children, loaded: true };
+            }
+            if (n.children) {
+              return { ...n, children: update(n.children) };
+            }
+            return n;
+          });
+        return update(prev);
+      });
+    },
+    [showHidden],
+  );
 
   /** Toggle a directory's expanded state. */
   const togglePath = useCallback((path: string) => {
@@ -319,6 +333,15 @@ export function FileExplorer({ rootPath, rootLabel }: FileExplorerProps) {
       } else {
         next.add(path);
       }
+      return next;
+    });
+  }, []);
+
+  /** Toggle whether hidden (dot) files are shown. */
+  const toggleShowHidden = useCallback(() => {
+    setShowHidden((prev) => {
+      const next = !prev;
+      localStorage.setItem("file-explorer:showHidden", String(next));
       return next;
     });
   }, []);
@@ -340,6 +363,14 @@ export function FileExplorer({ rootPath, rootLabel }: FileExplorerProps) {
     loadRoot();
   }, [normalisedRoot]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reload tree when showHidden preference changes
+  useEffect(() => {
+    setExpandedPaths(new Set());
+    setTree([]);
+    rootLoadedRef.current = false;
+    loadRoot();
+  }, [showHidden]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -349,6 +380,22 @@ export function FileExplorer({ rootPath, rootLabel }: FileExplorerProps) {
           {displayRoot}
         </span>
         <div className="flex-1" />
+        <button
+          type="button"
+          onClick={toggleShowHidden}
+          className={[
+            "inline-flex size-6 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground",
+            showHidden ? "text-foreground" : "text-muted-foreground",
+          ].join(" ")}
+          aria-label={showHidden ? "Hide dotfiles" : "Show dotfiles"}
+          title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
+        >
+          {showHidden ? (
+            <Eye className="size-3" />
+          ) : (
+            <EyeOff className="size-3" />
+          )}
+        </button>
         <button
           type="button"
           onClick={handleRefresh}
