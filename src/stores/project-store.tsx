@@ -97,6 +97,14 @@ type ProjectAction =
       projectId: string;
       sessionId: string;
       layout: string[];
+    }
+  | {
+      type: "HYDRATE_PROJECT";
+      projectId: string;
+      sessions: ChatSession[];
+      activeSessionId: string | null;
+      groups: SessionGroup[];
+      layout: string[];
     };
 
 // ── Context value ──────────────────────────────────────────────────────
@@ -106,7 +114,10 @@ interface ProjectStoreContextValue extends ProjectState {
   closeProject: (projectId: string) => void;
   setActiveProject: (projectId: string) => void;
   pathToId: (path: string) => string;
-  addSession: (projectId: string, overrides?: { title?: string; path?: string }) => string;
+  addSession: (
+    projectId: string,
+    overrides?: { title?: string; path?: string },
+  ) => string;
   removeSession: (projectId: string, sessionId: string) => void;
   setActiveSession: (projectId: string, sessionId: string) => void;
   renameSession: (projectId: string, sessionId: string, title: string) => void;
@@ -181,49 +192,6 @@ function makeDefaultSession(): ChatSession {
 
 // ── Persistence ────────────────────────────────────────────────────────
 
-interface SerializedGroup extends Omit<SessionGroup, "sessionIds"> {
-  sessionIds: string[];
-}
-
-interface SerializedProject extends Omit<
-  Project,
-  "lastOpened" | "sessions" | "groups" | "layout"
-> {
-  lastOpened: string;
-  sessions: Array<Omit<ChatSession, "createdAt"> & { createdAt: string }>;
-  groups: SerializedGroup[];
-  layout: string[];
-}
-
-function ensureSessions(project: SerializedProject): Project {
-  const sessions: ChatSession[] = (project.sessions ?? []).map((s) => ({
-    ...s,
-    createdAt: new Date(s.createdAt),
-    agentId: s.agentId ?? null,
-    path: s.path ?? undefined,
-  }));
-  // Backward compat: projects loaded from storage before sessions existed
-  if (sessions.length === 0) {
-    const defaultSession = makeDefaultSession();
-    sessions.push(defaultSession);
-  }
-  // Backward compat: projects loaded from storage before groups existed
-  const groups = (project.groups ?? []).map((g) => ({
-    ...g,
-    sessionIds: g.sessionIds ?? [],
-  }));
-  // Backward compat: compute layout from groups + ungrouped sessions if missing
-  const layout = project.layout ?? computeLayout(groups, sessions);
-  return {
-    ...project,
-    lastOpened: new Date(project.lastOpened),
-    sessions,
-    activeSessionId: project.activeSessionId ?? sessions[0].id ?? null,
-    groups,
-    layout,
-  };
-}
-
 /** Derive a layout from existing groups and sessions (migration helper). */
 function computeLayout(
   groups: SessionGroup[],
@@ -235,13 +203,27 @@ function computeLayout(
 }
 
 function loadState(): ProjectState {
+  // Load the lightweight registry from localStorage.
+  // Per-project data (sessions, groups, layout) is loaded asynchronously
+  // via loadProjectFromDisk() when the provider mounts.
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        openProjects: (parsed.openProjects ?? []).map(ensureSessions),
-        activeProjectId: parsed.activeProjectId ?? null,
+        openProjects: (parsed.openProjects ?? []).map(
+          (p: Record<string, unknown>) => ({
+            id: p.id as string,
+            name: p.name as string,
+            path: p.path as string,
+            lastOpened: new Date(p.lastOpened as string),
+            sessions: [],
+            activeSessionId: null,
+            groups: [],
+            layout: [],
+          }),
+        ),
+        activeProjectId: (parsed.activeProjectId as string) ?? null,
       };
     }
   } catch {
@@ -251,10 +233,54 @@ function loadState(): ProjectState {
 }
 
 function saveState(state: ProjectState): void {
+  // Save only the lightweight registry to localStorage.
+  // Per-project data is persisted to <project>/.belay/state.json via IPC.
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const registry = {
+      openProjects: state.openProjects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        path: p.path,
+        lastOpened: p.lastOpened.toISOString(),
+      })),
+      activeProjectId: state.activeProjectId,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(registry));
   } catch {
     // Ignore quota errors
+  }
+}
+
+/**
+ * Save a single project's state (sessions, groups, layout) to .belay/state.json.
+ * Called as a side effect whenever the project's state changes.
+ */
+async function saveProjectToDisk(project: Project): Promise<void> {
+  const api = window.electronAPI;
+  if (!api) return;
+
+  try {
+    const state = {
+      sessions: project.sessions.map((s) => ({
+        id: s.id,
+        title: s.title,
+        createdAt:
+          s.createdAt instanceof Date
+            ? s.createdAt.toISOString()
+            : String(s.createdAt),
+        agentId: s.agentId,
+        path: s.path,
+      })),
+      activeSessionId: project.activeSessionId,
+      groups: project.groups,
+      layout: project.layout,
+    };
+    await api.storageSaveState(project.path, state);
+  } catch (err) {
+    console.error(
+      `[ProjectStore] Failed to save project state for ${project.name}:`,
+      err,
+    );
   }
 }
 
@@ -305,6 +331,28 @@ function projectReducer(
         openProjects: [...state.openProjects, newProject],
         activeProjectId: newProject.id,
       };
+    }
+
+    case "HYDRATE_PROJECT": {
+      // Merge state loaded from .belay/state.json into an already-opened project
+      const idx = state.openProjects.findIndex(
+        (p) => p.id === action.projectId,
+      );
+      if (idx === -1) return state;
+      const existing = state.openProjects[idx];
+      // Only hydrate if the project hasn't already been hydrated (sessions still empty)
+      if (existing.sessions.length > 0) return state;
+      const hydrated: Project = {
+        ...existing,
+        sessions:
+          action.sessions.length > 0 ? action.sessions : existing.sessions,
+        activeSessionId: action.activeSessionId,
+        groups: action.groups,
+        layout: action.layout,
+      };
+      const openProjects = [...state.openProjects];
+      openProjects[idx] = hydrated;
+      return { ...state, openProjects };
     }
 
     case "CLOSE_PROJECT": {
@@ -764,13 +812,26 @@ const ProjectStoreContext = createContext<ProjectStoreContextValue | null>(
 export function ProjectStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(projectReducer, null, loadState);
 
+  // Persist lightweight registry to localStorage on every state change
   useEffect(() => {
     saveState(state);
+  }, [state]);
+
+  // Persist per-project state to .belay/state.json on every state change
+  useEffect(() => {
+    for (const project of state.openProjects) {
+      // Only save projects that have been fully loaded (have sessions populated)
+      if (project.sessions.length > 0 || project.groups.length > 0) {
+        saveProjectToDisk(project);
+      }
+    }
   }, [state]);
 
   const openProject = useCallback((rawPath: string) => {
     const id = pathToId(rawPath);
     const name = pathToName(rawPath);
+
+    // Dispatch with empty sessions — they'll be loaded from disk asynchronously
     dispatch({
       type: "OPEN_PROJECT",
       project: {
@@ -784,6 +845,54 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
         layout: [],
       },
     });
+
+    // Initialize .belay/ storage and load saved state asynchronously
+    (async () => {
+      const api = window.electronAPI;
+      if (!api) return;
+
+      try {
+        await api.storageInit(rawPath);
+        const saved = await api.storageLoadState(rawPath);
+
+        if (saved) {
+          // Hydrate the project with saved state from disk
+          const sessions: ChatSession[] = (saved.sessions ?? []).map((s) => ({
+            id: s.id,
+            title: s.title,
+            createdAt: new Date(s.createdAt),
+            agentId: s.agentId ?? null,
+            path: s.path ?? undefined,
+          }));
+
+          const groups = (saved.groups ?? []).map((g) => ({
+            id: g.id,
+            name: g.name,
+            color: g.color,
+            sessionIds: g.sessionIds ?? [],
+            collapsed: g.collapsed ?? false,
+          }));
+
+          const layout = saved.layout ?? computeLayout(groups, sessions);
+          const activeSessionId =
+            saved.activeSessionId ?? sessions[0]?.id ?? null;
+
+          dispatch({
+            type: "HYDRATE_PROJECT",
+            projectId: id,
+            sessions,
+            activeSessionId,
+            groups,
+            layout,
+          });
+        }
+      } catch (err) {
+        console.error(
+          `[ProjectStore] Failed to load project state for ${rawPath}:`,
+          err,
+        );
+      }
+    })();
   }, []);
 
   const closeProject = useCallback(
@@ -792,12 +901,14 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
       const project = state.openProjects.find((p) => p.id === projectId);
       if (project) {
         for (const session of project.sessions) {
-          window.electronAPI?.sessionDeleteMessages(session.id).catch((err) => {
-            console.error(
-              `[ProjectStore] Failed to delete session messages for ${session.id}:`,
-              err,
-            );
-          });
+          window.electronAPI
+            ?.storageDeleteMessages(project.path, session.id)
+            .catch((err) => {
+              console.error(
+                `[ProjectStore] Failed to delete session messages for ${session.id}:`,
+                err,
+              );
+            });
         }
       }
       dispatch({ type: "CLOSE_PROJECT", projectId });
@@ -810,7 +921,10 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addSession = useCallback(
-    (projectId: string, overrides?: { title?: string; path?: string }): string => {
+    (
+      projectId: string,
+      overrides?: { title?: string; path?: string },
+    ): string => {
       const base = makeDefaultSession();
       const session: ChatSession = {
         ...base,
@@ -831,12 +945,14 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
 
       dispatch({ type: "REMOVE_SESSION", projectId, sessionId });
       // Side effect: delete the persisted message file for this session
-      window.electronAPI?.sessionDeleteMessages(sessionId).catch((err) => {
-        console.error(
-          `[ProjectStore] Failed to delete session messages for ${sessionId}:`,
-          err,
-        );
-      });
+      window.electronAPI
+        ?.storageDeleteMessages(project?.path ?? "", sessionId)
+        .catch((err) => {
+          console.error(
+            `[ProjectStore] Failed to delete session messages for ${sessionId}:`,
+            err,
+          );
+        });
 
       // Auto-create a fresh session so the project is never empty
       if (isLast) {
