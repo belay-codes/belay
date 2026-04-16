@@ -207,7 +207,7 @@ export interface ElectronAPI {
   acpRespondPermission: (requestId: string, optionId: string) => Promise<void>;
 
   // File system - Directory explorer
-  fsReadDir: (dirPath: string) => Promise<DirEntry[]>;
+  fsReadDir: (dirPath: string, showHidden?: boolean) => Promise<DirEntry[]>;
 
   // Git
   gitIsRepo: (dirPath: string) => Promise<boolean>;
