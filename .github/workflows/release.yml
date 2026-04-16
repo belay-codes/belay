@@ -40,6 +40,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -55,8 +57,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libarchive-tools rpm
 
-      - name: Build & publish
-        run: npm run package -- --publish always
+      - name: Build app
+        run: npm run build
+
+      - name: Package & publish
+        run: npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS code signing (set these secrets when ready):
