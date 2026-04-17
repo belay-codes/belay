@@ -206,7 +206,6 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
-  const [clipboardHasText, setClipboardHasText] = useState(false);
 
   const handleContextMenuCopy = useCallback(() => {
     const selection = window.getSelection()?.toString() ?? "";
@@ -215,17 +214,10 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     }
   }, []);
 
-  const handleContextMenuPaste = useCallback(async () => {
-    const text = await navigator.clipboard.readText();
-  }, []);
-
   const handleChatContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const selection = window.getSelection()?.toString() ?? "";
     setHasSelection(selection.length > 0);
-    navigator.clipboard.readText().then((text) => {
-      setClipboardHasText(text && text.length > 0);
-    });
     setContextMenu({ x: e.clientX, y: e.clientY });
   }, []);
 
@@ -1403,9 +1395,9 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
             x={contextMenu.x}
             y={contextMenu.y}
             canCopy={hasSelection}
-            canPaste={clipboardHasText}
+            canPaste={false}
             onCopy={handleContextMenuCopy}
-            onPaste={handleContextMenuPaste}
+            onPaste={() => {}}
             onClose={handleCloseContextMenu}
           />
         )}
