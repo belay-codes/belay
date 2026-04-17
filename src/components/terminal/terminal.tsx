@@ -241,7 +241,10 @@ export function TerminalView({
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const [clipboardHasText, setClipboardHasText] = useState(false);
   // Ref so the PTY-exit handler always calls the latest onClose without
@@ -275,7 +278,7 @@ export function TerminalView({
     const selection = terminal?.getSelection() ?? "";
     setHasSelection(selection.length > 0);
     navigator.clipboard.readText().then((text) => {
-      setClipboardHasText(text && text.length > 0);
+      setClipboardHasText(text.length > 0);
     });
     setContextMenu({ x: e.clientX, y: e.clientY });
   }, []);
