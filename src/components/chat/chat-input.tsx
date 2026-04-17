@@ -84,17 +84,21 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [hasInputSelection, setHasInputSelection] = useState(false);
   const [clipboardHasText, setClipboardHasText] = useState(false);
 
   const handleInputContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const textarea = textareaRef.current;
-    const hasSelection = textarea && textarea.selectionStart !== textarea.selectionEnd;
+    const hasSelection =
+      textarea && textarea.selectionStart !== textarea.selectionEnd;
     setHasInputSelection(hasSelection ?? false);
     navigator.clipboard.readText().then((text) => {
-      setClipboardHasText(text && text.length > 0);
+      setClipboardHasText(text.length > 0);
     });
     setContextMenu({ x: e.clientX, y: e.clientY });
   }, []);
@@ -120,7 +124,8 @@ export function ChatInput({
       const textarea = textareaRef.current;
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
-      const newValue = textarea.value.slice(0, start) + text + textarea.value.slice(end);
+      const newValue =
+        textarea.value.slice(0, start) + text + textarea.value.slice(end);
       setValue(newValue);
       const newCursorPos = start + text.length;
       requestAnimationFrame(() => {
