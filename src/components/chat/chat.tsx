@@ -204,26 +204,25 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   );
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ── Context menu for message area (copy-only) ────────────────
-  const [msgContextMenu, setMsgContextMenu] = useState<{ x: number; y: number } | null>(null);
-  const [hasMsgSelection, setHasMsgSelection] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [hasSelection, setHasSelection] = useState(false);
 
-  const handleMsgContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const selection = window.getSelection()?.toString() ?? "";
-    setHasMsgSelection(selection.length > 0);
-    setMsgContextMenu({ x: e.clientX, y: e.clientY });
-  }, []);
-
-  const handleMsgContextMenuClose = useCallback(() => {
-    setMsgContextMenu(null);
-  }, []);
-
-  const handleMsgCopy = useCallback(() => {
+  const handleContextMenuCopy = useCallback(() => {
     const selection = window.getSelection()?.toString() ?? "";
     if (selection) {
       navigator.clipboard.writeText(selection);
     }
+  }, []);
+
+  const handleChatContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const selection = window.getSelection()?.toString() ?? "";
+    setHasSelection(selection.length > 0);
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
   }, []);
 
   // ── Session status ──────────────────────────────────────────────
@@ -289,6 +288,11 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
   // wipe cached modes/commands on initial mount (connectionState starts
   // as "disconnected" but we haven't actually lost a connection yet).
   const hasConnectedRef = useRef(false);
+
+  // Track whether an out-of-band prompt is being streamed (prompts not from UI)
+  // This happens when the harness injects prompts programmatically, e.g.
+  // oh-my-openagent background task completion notifications via session.promptAsync
+  const outOfBandStreamingRef = useRef(false);
 
   // ── Restore modes/commands from cache when agentId changes ──────
   useEffect(() => {
@@ -571,7 +575,44 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       }
 
       const targetId = streamingMessageId.current;
-      if (!targetId) return;
+
+      // Handle out-of-band prompts: harness may inject prompts programmatically
+      // (e.g. oh-my-openagent background task notifications via session.promptAsync).
+      // Create synthetic messages to capture streaming responses.
+      if (!targetId) {
+        const isStreamingChunk =
+          sessionUpdate === "agent_message_chunk" ||
+          sessionUpdate === "agent_thought_chunk" ||
+          sessionUpdate === "tool_call";
+
+        if (isStreamingChunk) {
+          const syntheticUserMessage: Message = {
+            id: crypto.randomUUID(),
+            role: "user",
+            blocks: [
+              { id: crypto.randomUUID(), type: "text", content: "[System notification]" },
+            ],
+            timestamp: new Date(),
+          };
+
+          const assistantId = crypto.randomUUID();
+          streamingMessageId.current = assistantId;
+          outOfBandStreamingRef.current = true;
+          setIsThinking(true);
+
+          const assistantMessage: Message = {
+            id: assistantId,
+            role: "assistant",
+            blocks: [],
+            timestamp: new Date(),
+            isStreaming: true,
+          };
+
+          setMessages((prev) => [...prev, syntheticUserMessage, assistantMessage]);
+        } else {
+          return;
+        }
+      }
 
       // ── Thought chunk ──────────────────────────────────────────
       if (sessionUpdate === "agent_thought_chunk") {
@@ -664,6 +705,37 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
               : msg,
           ),
         );
+      }
+
+      // Finalize message when agent completes (handles out-of-band prompt completion)
+      if (sessionUpdate === "message_updated" || sessionUpdate === "message.updated") {
+        const status = inner.status as string | undefined;
+        if (status === "completed" && targetId) {
+          const completedAt = new Date();
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id !== targetId) return msg;
+              const finalizedBlocks = msg.blocks.map((b) =>
+                b.type === "thinking" && b.startedAt && !b.completedAt
+                  ? { ...b, completedAt }
+                  : b,
+              );
+              return {
+                ...msg,
+                isStreaming: false,
+                completedAt,
+                blocks: finalizedBlocks,
+              };
+            }),
+          );
+
+          if (outOfBandStreamingRef.current) {
+            setIsThinking(false);
+            streamingMessageId.current = null;
+            outOfBandStreamingRef.current = false;
+            saveMessages();
+          }
+        }
       }
     });
   }, []);
@@ -808,13 +880,53 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     [setMessages],
   );
 
-// ── Send a message ───────────────────────────────────────────────
+  // ── Handle mode selection from @ autocomplete ───────────────────
+  const handleModeSelect = useCallback(
+    async (modeId: string) => {
+      if (!agentId || !acpSessionId || modeId === currentModeId) return;
+      setCurrentModeId(modeId);
+      try {
+        await setSessionMode(agentId, acpSessionId, modeId);
+      } catch (err) {
+        console.error("[Chat] Failed to set mode from @ mention:", err);
+      }
+    },
+    [agentId, acpSessionId, currentModeId, setSessionMode],
+  );
+
+  // ── Send a message ───────────────────────────────────────────────
   const handleSend = useCallback(
     async (content: string) => {
       let trimmed = content.trim();
       if (!trimmed || isThinking) return;
 
-      const displayContent = content.trim();
+      // ── Parse @mode mentions from the start of the message ──────
+      // Pattern: @ModeName (rest of message). The mode name must match
+      // one of the available modes (case-insensitive on the name or id).
+      let modeSwitched = false;
+      const atMatch = trimmed.match(/^@(\S+)\s*/);
+      if (atMatch && availableModes.length > 0) {
+        const mention = atMatch[1].toLowerCase();
+        const matched = availableModes.find(
+          (m) =>
+            m.name.toLowerCase() === mention || m.id.toLowerCase() === mention,
+        );
+        if (matched) {
+          // Switch mode
+          if (agentId && acpSessionId && matched.id !== currentModeId) {
+            setCurrentModeId(matched.id);
+            setSessionMode(agentId, acpSessionId, matched.id).catch((err) =>
+              console.error("[Chat] Failed to set mode from @ mention:", err),
+            );
+          }
+          modeSwitched = true;
+          // Strip the @mention and its trailing whitespace
+          trimmed = trimmed.slice(atMatch[0].length).trim();
+          if (!trimmed) return; // was only a mode mention, nothing to send
+        }
+      }
+
+      const displayContent = modeSwitched ? content.trim() : trimmed;
 
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -1275,14 +1387,15 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
         {/* Agent selector + input pinned to bottom */}
         <div className="bg-muted px-4 pb-3">
           <div className="mx-auto max-w-4xl">
-<ChatInput
+            <ChatInput
               onSend={handleSend}
               disabled={!agentId || isThinking}
               placeholder={
                 agentId ? undefined : "Select an agent to get started…"
               }
               slashCommands={slashCommands}
-              projectPath={projectPath}
+              modes={availableModes}
+              onModeSelect={handleModeSelect}
               controls={
                 <>
                   {agentSelector}
@@ -1303,7 +1416,7 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Message list with fade overlay */}
       <div className="relative flex-1 min-h-0">
-        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" onContextMenu={handleMsgContextMenu}>
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto" onContextMenu={handleChatContextMenu}>
           <div className="mx-auto max-w-4xl px-4 py-6">
             <div className="space-y-4">
               {messages.map((message) => (
@@ -1350,15 +1463,15 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
           </div>
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-b from-transparent to-muted" />
-        {msgContextMenu && (
+        {contextMenu && (
           <ContextMenu
-            x={msgContextMenu.x}
-            y={msgContextMenu.y}
-            canCopy={hasMsgSelection}
+            x={contextMenu.x}
+            y={contextMenu.y}
+            canCopy={hasSelection}
             canPaste={false}
-            onCopy={handleMsgCopy}
+            onCopy={handleContextMenuCopy}
             onPaste={() => {}}
-            onClose={handleMsgContextMenuClose}
+            onClose={handleCloseContextMenu}
           />
         )}
       </div>
@@ -1366,14 +1479,15 @@ export function Chat({ sessionId, projectId, projectPath }: ChatProps) {
       {/* Prompt box pinned to bottom */}
       <div className="bg-muted px-4 pb-3">
         <div className="mx-auto max-w-4xl">
-<ChatInput
+          <ChatInput
             onSend={handleSend}
             disabled={!agentId || isThinking}
             placeholder={
               agentId ? undefined : "Select an agent to get started…"
             }
             slashCommands={slashCommands}
-            projectPath={projectPath}
+            modes={availableModes}
+            onModeSelect={handleModeSelect}
             controls={
               <>
                 {agentSelector}
